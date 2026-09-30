@@ -18,26 +18,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - component: gateway
-            dockerfile: Dockerfile
-            litellm_component: gateway
-          - component: backend
-            dockerfile: Dockerfile
-            litellm_component: backend
-          - component: ui
-            dockerfile: Dockerfile
-            litellm_component: ui
-          - component: migrations
-            dockerfile: Dockerfile
-            litellm_component: migrations
-          - component: monolith
+          - component: litellm
             dockerfile: Dockerfile
           - component: worker
             dockerfile: deploy/lens/Dockerfile
     env:
       COMPONENT: ${{ matrix.component }}
       DOCKERFILE: ${{ matrix.dockerfile }}
-      LITELLM_COMPONENT: ${{ matrix.litellm_component }}
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
@@ -46,10 +33,6 @@ jobs:
         run: |
           docker build --build-arg LITELLM_RELEASE_TAG=v0.0.0-lens-ci \
             -f "$DOCKERFILE" -t "lens-ci-$COMPONENT:v0.0.0-lens-ci" .
-          if [[ -n "$LITELLM_COMPONENT" ]]; then
-            printf 'FROM lens-ci-%s:v0.0.0-lens-ci\nENV LITELLM_COMPONENT=%s\n' "$COMPONENT" "$LITELLM_COMPONENT" \
-              | docker build -t "lens-ci-$COMPONENT:v0.0.0-lens-ci" -
-          fi
       - name: Save the matching release image
         run: |
           docker save "lens-ci-$COMPONENT:v0.0.0-lens-ci" \
@@ -78,7 +61,7 @@ jobs:
           path: ${{ runner.temp }}/lens-install-images
       - name: Load the matching release images
         run: |
-          for component in gateway backend ui migrations monolith worker; do
+          for component in litellm worker; do
             archive="$RUNNER_TEMP/lens-install-images/lens-install-$component.tar.gz"
             gzip -dc "$archive" | docker load
             rm "$archive"

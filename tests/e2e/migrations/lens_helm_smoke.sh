@@ -23,10 +23,9 @@ export KUBECONFIG="$qa_dir/kubeconfig"
 kind create cluster --name "$cluster" \
   --image kindest/node:v1.32.2@sha256:f226345927d7e348497136874b6d207e0b32cc52154ad8323129352923a3142f \
   --wait 120s
-for component in gateway backend ui migrations monolith worker; do
+for component in litellm worker; do
   kind load docker-image --name "$cluster" "lens-ci-$component:v0.0.0-lens-ci"
 done
-helm dependency build helm/litellm-helm
 
 api() {
   curl --fail-with-body --silent --show-error --max-time 20 \
@@ -72,8 +71,8 @@ forward() {
   return 1
 }
 
-for chart in litellm-helm litellm; do
-  namespace="lens-$chart"
+for mode in monolith componentized; do
+  namespace="lens-$mode"
   kubectl create namespace "$namespace"
   master_key="sk-$(openssl rand -hex 24)"
   kubectl -n "$namespace" create secret generic lens-secrets \
@@ -142,41 +141,15 @@ lensWorker:
   retentionDays: 45
   publicUrl: http://127.0.0.1:14419
 YAML
-  if [[ "$chart" == litellm-helm ]]; then
-    control=lens
-    control_port=4000
-    cat > "$qa_dir/chart.yaml" <<'YAML'
-image: {repository: lens-ci-monolith, tag: v0.0.0-lens-ci, pullPolicy: Never}
-masterkeySecretName: lens-secrets
-masterkeySecretKey: master-key
-envVars: {STORE_MODEL_IN_DB: "True"}
-db:
-  deployStandalone: false
-  useExisting: true
-  endpoint: postgres
-  secret: {name: lens-secrets, usernameKey: username, passwordKey: password}
-redis: {enabled: false}
-proxy_config:
-  model_list: []
-  general_settings:
-    master_key: os.environ/PROXY_MASTER_KEY
-    store_model_in_db: true
-    tracing: {enabled: true, store: {type: lens}}
-YAML
-  else
-    control=lens-backend
-    control_port=4001
-    cat > "$qa_dir/chart.yaml" <<'YAML'
+  cat > "$qa_dir/chart.yaml" <<'YAML'
+image: {repository: lens-ci-litellm, tag: v0.0.0-lens-ci, pullPolicy: Never}
 masterKey: {secretName: lens-secrets, secretKey: master-key}
 database:
   writer:
     host: postgres
     dbname: litellm
     passwordSecret: {name: lens-secrets, usernameKey: username, passwordKey: password}
-migrationJob:
-  image: {repository: lens-ci-migrations, tag: v0.0.0-lens-ci, pullPolicy: Never}
 gateway:
-  image: {repository: lens-ci-gateway, tag: v0.0.0-lens-ci, pullPolicy: Never}
   numWorkers: 1
   extraEnv: [{name: STORE_MODEL_IN_DB, value: "True"}]
   hpa: {enabled: false}
@@ -190,15 +163,20 @@ gateway:
         tracing: {enabled: true, store: {type: lens}}
 backend:
   extraEnv: [{name: STORE_MODEL_IN_DB, value: "True"}]
-  image: {repository: lens-ci-backend, tag: v0.0.0-lens-ci, pullPolicy: Never}
   hpa: {enabled: false}
   resources: {requests: {cpu: 100m, memory: 512Mi}, limits: {memory: 2Gi}}
 ui:
-  image: {repository: lens-ci-ui, tag: v0.0.0-lens-ci, pullPolicy: Never}
   hpa: {enabled: false}
 YAML
+  if [[ "$mode" == monolith ]]; then
+    control=lens
+    control_port=4000
+    printf 'monolith: {enabled: true}\n' >> "$qa_dir/chart.yaml"
+  else
+    control=lens-backend
+    control_port=4001
   fi
-  install=(helm upgrade --install lens "helm/$chart" -n "$namespace" \
+  install=(helm upgrade --install lens helm/litellm -n "$namespace" \
     -f "$qa_dir/common.yaml" -f "$qa_dir/chart.yaml" --wait --wait-for-jobs --timeout 8m)
   "${install[@]}" || diagnose
   forward "$control" 14418 "$control_port"
@@ -230,7 +208,7 @@ YAML
   kubectl -n "$namespace" rollout status deployment/lens-lens-worker --timeout=180s
   forward "$control" 14418 "$control_port"
   saved_trace
-  printf '%s: fresh install, direct ingestion, custom database, upgrade, and restart passed\n' "$chart"
+  printf '%s: fresh install, direct ingestion, custom database, upgrade, and restart passed\n' "$mode"
   for pid in "${forward_pids[@]}"; do kill "$pid"; wait "$pid" 2>/dev/null || true; done
   forward_pids=()
   kubectl delete namespace "$namespace" --wait=true

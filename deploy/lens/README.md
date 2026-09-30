@@ -67,7 +67,7 @@ Lens does not need provider credentials, PostgreSQL credentials, a GPU, or the L
 
 ### Kubernetes with Helm
 
-Both `helm/litellm` and `helm/litellm-helm` support Lens. Keep your existing chart, release name, namespace, and values. Add:
+`helm/litellm` supports Lens in both componentized and monolith mode. Keep your existing release name, namespace, and values. Add:
 
 ```yaml
 lensWorker:
