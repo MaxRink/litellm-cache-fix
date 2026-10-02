@@ -19,13 +19,17 @@ jobs:
       matrix:
         include:
           - component: gateway
-            dockerfile: gateway/Dockerfile
+            dockerfile: Dockerfile
+            litellm_component: gateway
           - component: backend
-            dockerfile: backend/Dockerfile
+            dockerfile: Dockerfile
+            litellm_component: backend
           - component: ui
-            dockerfile: ui/Dockerfile
+            dockerfile: Dockerfile
+            litellm_component: ui
           - component: migrations
-            dockerfile: migrations/Dockerfile
+            dockerfile: Dockerfile
+            litellm_component: migrations
           - component: monolith
             dockerfile: Dockerfile
           - component: worker
@@ -33,6 +37,7 @@ jobs:
     env:
       COMPONENT: ${{ matrix.component }}
       DOCKERFILE: ${{ matrix.dockerfile }}
+      LITELLM_COMPONENT: ${{ matrix.litellm_component }}
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
@@ -41,6 +46,10 @@ jobs:
         run: |
           docker build --build-arg LITELLM_RELEASE_TAG=v0.0.0-lens-ci \
             -f "$DOCKERFILE" -t "lens-ci-$COMPONENT:v0.0.0-lens-ci" .
+          if [[ -n "$LITELLM_COMPONENT" ]]; then
+            printf 'FROM lens-ci-%s:v0.0.0-lens-ci\nENV LITELLM_COMPONENT=%s\n' "$COMPONENT" "$LITELLM_COMPONENT" \
+              | docker build -t "lens-ci-$COMPONENT:v0.0.0-lens-ci" -
+          fi
       - name: Save the matching release image
         run: |
           docker save "lens-ci-$COMPONENT:v0.0.0-lens-ci" \
