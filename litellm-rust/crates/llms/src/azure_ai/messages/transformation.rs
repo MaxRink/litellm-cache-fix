@@ -18,6 +18,7 @@ use crate::{
     },
     base_llm::{
         auth::{AuthScheme, Headers, ValidatedEnvironment},
+        litellm_params::LitellmParams,
         messages::{
             context::MessagesTransformContext,
             normalization::fold_system_role_messages,
@@ -47,6 +48,8 @@ impl BaseMessagesConfig for AzureAnthropicMessagesConfig {
         &self,
         api_base: Option<&str>,
         _model: &str,
+        _litellm_params: &LitellmParams,
+        _stream: bool,
         env_lookup: &dyn Fn(&str) -> Option<String>,
     ) -> Result<String, Error> {
         complete_azure_anthropic_url(api_base, env_lookup)
@@ -86,6 +89,7 @@ impl BaseMessagesConfig for AzureAnthropicMessagesConfig {
         headers: Headers,
         api_key: Option<&str>,
         _model: &str,
+        _litellm_params: &LitellmParams,
         env_lookup: &dyn Fn(&str) -> Option<String>,
     ) -> Result<ValidatedEnvironment, Error> {
         if has_header(&headers, API_KEY_PLACEMENT.header_name()) || has_bearer_auth(&headers) {
@@ -268,6 +272,7 @@ mod tests {
                     .collect(),
                 api_key,
                 "claude",
+                &LitellmParams::default(),
                 &|_| None,
             )
             .unwrap()
@@ -607,9 +612,16 @@ mod tests {
             Vec::new(),
             None,
             "claude",
+            &LitellmParams::default(),
             &record,
         );
-        let _ = AZURE_ANTHROPIC_MESSAGES_CONFIG.get_complete_url(None, "claude", &record);
+        let _ = AZURE_ANTHROPIC_MESSAGES_CONFIG.get_complete_url(
+            None,
+            "claude",
+            &LitellmParams::default(),
+            false,
+            &record,
+        );
         let requested = requested.into_inner();
         assert!(!requested.is_empty());
         let undeclared: Vec<&String> = requested

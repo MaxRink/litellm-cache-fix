@@ -5,7 +5,8 @@ use bytes::Bytes;
 use litellm_host_python::{InvokeError, PythonBinding, from_py, present, to_py};
 use litellm_http::transport::Error as TransportError;
 use litellm_inference_messages::{
-    Error, MessagesCall, MessagesSettings, MessagesShaping, messages_body,
+    Error, LitellmParams, MessagesCall, MessagesSettings, MessagesShaping, litellm_params,
+    messages_body,
     route::{Messages, MessagesStreamHead},
 };
 use litellm_llms::base_llm::messages::context::MessagesModelCapabilities;
@@ -61,6 +62,17 @@ fn merge_headers(
         .chain(extra_headers.into_iter().flatten())
         .collect();
     (!merged.is_empty()).then_some(merged)
+}
+
+/// The caller's litellm params, read from the kwargs by the names the typed params declare,
+/// so a key the configs do not read is never converted.
+fn project_litellm_params<'py>(
+    argument: impl Fn(&str) -> PyResult<Option<Bound<'py, PyAny>>>,
+) -> PyResult<Result<LitellmParams, Error>> {
+    Ok(litellm_params(project_optional_fields(
+        LitellmParams::fields(),
+        argument,
+    )?))
 }
 
 fn native_error(py: Python<'_>, error: Error) -> PyResult<PyErr> {
@@ -132,15 +144,19 @@ impl MessagesPythonHost {
         let api_base = string("api_base")?;
         let extra_headers = self.merged_headers(py, arguments)?;
         let provider_specific_header = self.provider_specific_header(py, arguments)?;
-        Ok(messages_body(body).map(|body| MessagesCall {
-            body,
-            api_key,
-            api_base,
-            extra_headers,
-            provider_specific_header,
-            custom_llm_provider,
-            timeout: optional_timeout(timeout),
-            shaping,
+        let litellm_params = project_litellm_params(argument)?;
+        Ok(messages_body(body).and_then(|body| {
+            Ok(MessagesCall {
+                body,
+                api_key,
+                api_base,
+                extra_headers,
+                provider_specific_header,
+                custom_llm_provider,
+                litellm_params: litellm_params?,
+                timeout: optional_timeout(timeout),
+                shaping,
+            })
         }))
     }
 
@@ -349,6 +365,37 @@ mod tests {
             merge_headers(forwarded.map(map), extra_headers.map(map)),
             expected.map(map)
         );
+    }
+
+    #[rstest]
+    #[case::aws_keys_are_projected(
+        json!({"aws_region_name": "eu-central-1", "aws_access_key_id": "AKIA", "messages": [{"role": "user"}]}),
+        Ok(json!({"aws_region_name": "eu-central-1", "aws_access_key_id": "AKIA"})),
+    )]
+    #[case::an_explicit_none_is_absent(json!({"aws_region_name": null}), Ok(json!({})))]
+    #[case::a_wrong_type_is_a_request_error(json!({"aws_region_name": 7}), Err(()))]
+    fn litellm_params_are_projected_by_their_declared_names(
+        #[case] kwargs: Value,
+        #[case] expected: Result<Value, ()>,
+    ) {
+        Python::initialize();
+        Python::attach(|py| {
+            let kwargs = to_py(py, &kwargs)
+                .unwrap()
+                .into_bound(py)
+                .cast_into::<PyDict>()
+                .unwrap();
+            let bound = PyDict::new(py);
+            let projected = project_litellm_params(|name| present(&kwargs, &bound, name)).unwrap();
+            match (projected, expected) {
+                (Ok(projected), Ok(fields)) => assert_eq!(
+                    projected,
+                    litellm_params(serde_json::from_value(fields).unwrap()).unwrap()
+                ),
+                (Err(error), Err(())) => assert!(matches!(error, Error::InvalidRequest(_))),
+                (projected, expected) => panic!("got {projected:?}, expected {expected:?}"),
+            }
+        });
     }
 
     #[rstest]

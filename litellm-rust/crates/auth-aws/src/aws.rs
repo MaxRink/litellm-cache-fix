@@ -3,7 +3,7 @@ use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use moka::sync::Cache;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
@@ -541,7 +541,7 @@ fn is_bedrock_region(value: &str) -> bool {
 }
 
 /// The `aws_*` fields of Python's `GenericLiteLLMParams`.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AwsParams {
     #[serde(default)]
     pub aws_access_key_id: Option<String>,
@@ -563,9 +563,26 @@ pub struct AwsParams {
     pub aws_sts_endpoint: Option<String>,
     #[serde(default)]
     pub aws_external_id: Option<String>,
+    #[serde(default)]
+    pub aws_bedrock_runtime_endpoint: Option<String>,
 }
 
 impl AwsParams {
+    /// The wire names of every field, for hosts that project them out of a caller's kwargs.
+    pub const FIELDS: [&'static str; 11] = [
+        "aws_access_key_id",
+        "aws_secret_access_key",
+        "aws_session_token",
+        "aws_region_name",
+        "aws_session_name",
+        "aws_profile_name",
+        "aws_role_name",
+        "aws_web_identity_token",
+        "aws_sts_endpoint",
+        "aws_external_id",
+        "aws_bedrock_runtime_endpoint",
+    ];
+
     /// Reads the string-valued `aws_*` keys of an untyped params map, ignoring anything else.
     pub fn from_optional_params(optional_params: &Map<String, Value>) -> Self {
         let value = |key: &str| {
@@ -585,6 +602,7 @@ impl AwsParams {
             aws_web_identity_token: value("aws_web_identity_token"),
             aws_sts_endpoint: value("aws_sts_endpoint"),
             aws_external_id: value("aws_external_id"),
+            aws_bedrock_runtime_endpoint: value("aws_bedrock_runtime_endpoint"),
         }
     }
 }
@@ -741,6 +759,25 @@ mod tests {
         assert_eq!(
             resolve_bedrock_region(None, &AwsParams::default(), &no_env),
             DEFAULT_BEDROCK_REGION
+        );
+    }
+
+    #[test]
+    fn fields_name_every_param_once_and_in_declaration_order() {
+        let filled: Map<String, Value> = AwsParams::FIELDS
+            .iter()
+            .map(|name| (name.to_string(), Value::from(format!("value-of-{name}"))))
+            .collect();
+        let typed = AwsParams::from_optional_params(&filled);
+        let serialized = serde_json::to_value(&typed).unwrap();
+        assert_eq!(
+            serialized.as_object().unwrap().keys().collect::<Vec<_>>(),
+            AwsParams::FIELDS.iter().collect::<Vec<_>>()
+        );
+        assert_eq!(serialized, Value::Object(filled.clone()));
+        assert_eq!(
+            serde_json::from_value::<AwsParams>(Value::Object(filled)).unwrap(),
+            typed
         );
     }
 
