@@ -113,13 +113,14 @@ def observe(
 class TelemetryAttemptLogger(CustomLogger):
     """Turns each logged provider call into an ``AttemptRecord`` and hands it to the in-flight request, if any"""
 
-    def __init__(self, sink: TelemetrySink, hash_deployment: DeploymentHasher) -> None:
+    def __init__(self, sink: Callable[[], TelemetrySink | None], hash_deployment: DeploymentHasher) -> None:
         super().__init__()  # pyright: ignore[reportUnknownMemberType]  # base callback constructor accepts untyped kwargs
         self._sink: Final = sink
         self._hash_deployment: Final = hash_deployment
 
     def _record(self, kwargs: Mapping[str, object], *, succeeded: bool) -> None:
-        if _rejected_before_routing(kwargs.get("litellm_params")):
+        sink: Final = self._sink()
+        if sink is None or _rejected_before_routing(kwargs.get("litellm_params")):
             return
         try:
             logged: Final = _LoggedAttempt.model_validate(kwargs.get("standard_logging_object"))
@@ -129,7 +130,7 @@ class TelemetryAttemptLogger(CustomLogger):
         observation: Final = observe(
             logged, succeeded=succeeded, messages=kwargs.get("messages"), hash_deployment=self._hash_deployment
         )
-        self._sink.record_attempt(observation.attempt)
+        sink.record_attempt(observation.attempt)
         request: Final[RequestAccumulator | None] = current_request.get()
         if request is not None:
             request.add(observation)

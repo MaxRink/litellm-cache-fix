@@ -753,7 +753,8 @@ from litellm.proxy.spend_tracking.spend_event_producer import (
     build_spend_event_producer,
 )
 from litellm.proxy.telemetry.middleware import TelemetryMiddleware
-from litellm.proxy.telemetry.runtime import TelemetryRuntime, TelemetrySettings
+from litellm.proxy.telemetry.runtime import TelemetryRuntime
+from litellm.proxy.telemetry.settings import TelemetrySettings
 
 try:
     from litellm.proxy.enterprise_billing.billing_metrics import (
@@ -1734,7 +1735,7 @@ async def proxy_startup_event(app: FastAPI) -> AsyncGenerator[ProxyLifespanState
             else ()
         )
 
-        telemetry_runtime.start(
+        await telemetry_runtime.start(
             litellm_version=version,
             settings=TelemetrySettings(),
             register=litellm.logging_callback_manager.add_litellm_callback,

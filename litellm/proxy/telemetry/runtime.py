@@ -2,35 +2,27 @@ import asyncio
 import contextlib
 import hashlib
 import uuid
-from collections.abc import Callable, Coroutine
-from typing import Final
-
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from collections.abc import Awaitable, Callable, Coroutine
+from typing import Final, TypeAlias
 
 from litellm._logging import verbose_proxy_logger
 from litellm.llms.custom_httpx.http_handler import (
     get_async_httpx_client,  # pyright: ignore[reportUnknownVariableType]  # legacy params: dict signature
 )
 from litellm.proxy.telemetry.attempt_logger import TelemetryAttemptLogger
+from litellm.proxy.telemetry.settings import EnvPolicy, TelemetrySettings, env_policy
 from litellm.telemetry.aggregate import AggregatingSink
+from litellm.telemetry.consent import OFF, ConsentGatedSink, TelemetryConsent
 from litellm.telemetry.http_exporter import HttpExporter
-from litellm.telemetry.levels import LevelGatedSink
-from litellm.telemetry.records import InstanceInfo, TelemetryLevel
-from litellm.telemetry.sink import TelemetrySink
+from litellm.telemetry.records import InstanceInfo
+from litellm.telemetry.sink import Exporter
 from litellm.types.llms.custom_http import httpxSpecialProvider
 
+StoredConsent: TypeAlias = Callable[[], Awaitable[TelemetryConsent | None]]
 
-class TelemetrySettings(BaseSettings):
-    """``LITELLM_TELEMETRY_*`` env vars"""
 
-    model_config = SettingsConfigDict(
-        env_prefix="LITELLM_TELEMETRY_", case_sensitive=False, extra="ignore", frozen=True
-    )
-
-    level: str = TelemetryLevel.OFF.value
-    endpoint: str | None = None
-    flush_interval_seconds: float = 60.0
-    settle_timeout_seconds: float = 2.0
+async def nothing_stored() -> TelemetryConsent | None:
+    return None
 
 
 def deployment_hasher(salt: str) -> Callable[[str], str]:
@@ -38,10 +30,11 @@ def deployment_hasher(salt: str) -> Callable[[str], str]:
 
 
 class TelemetryRuntime:
-    """Owns the proxy's telemetry sink, its flush loop and the finalizer tasks the middleware spawns"""
+    """Owns the proxy's telemetry sink, re-reads which groups are on before every window, and flushes each window"""
 
     def __init__(self) -> None:
-        self.sink: TelemetrySink | None = None
+        self.sink: ConsentGatedSink | None = None
+        self.policy: EnvPolicy | None = None
         self._flush_task: asyncio.Task[None] | None = None
         self._pending: Final[set[asyncio.Task[None]]] = set()  # mutable-ok: strong refs keep finalizers alive
 
@@ -50,47 +43,69 @@ class TelemetryRuntime:
         self._pending.add(task)
         task.add_done_callback(self._pending.discard)
 
-    def start(
-        self, *, litellm_version: str, settings: TelemetrySettings, register: Callable[[TelemetryAttemptLogger], None]
+    async def start(
+        self,
+        *,
+        litellm_version: str,
+        settings: TelemetrySettings,
+        register: Callable[[TelemetryAttemptLogger], None],
+        stored: StoredConsent = nothing_stored,
     ) -> None:
-        level: Final = TelemetryLevel.parse(settings.level)
-        if level is None:
-            verbose_proxy_logger.warning(
-                "telemetry: unknown LITELLM_TELEMETRY_LEVEL %r, leaving it off", settings.level
-            )
+        policy: Final = env_policy(settings)
+        if not isinstance(policy, EnvPolicy):
+            verbose_proxy_logger.warning("telemetry: %s in LITELLM_TELEMETRY_GROUPS, leaving it off", policy.message())
             return
-        if level is TelemetryLevel.OFF:
+        self.policy = policy
+        if policy.locked_off:
             return
         if settings.endpoint is None:
-            verbose_proxy_logger.warning(
-                "telemetry: LITELLM_TELEMETRY_LEVEL is set but LITELLM_TELEMETRY_ENDPOINT is not"
-            )
             return
-        instance: Final = InstanceInfo(
-            instance_id=uuid.uuid4().hex, litellm_version=litellm_version, telemetry_level=level
-        )
         client: Final = get_async_httpx_client(httpxSpecialProvider.LoggingCallback, params={"timeout": 10.0}).client
-        sink: Final = LevelGatedSink(AggregatingSink(HttpExporter(client, settings.endpoint)), level)
-        sink.set_instance(instance)
-        register(TelemetryAttemptLogger(sink, deployment_hasher(instance.instance_id)))
-        self.sink = sink
-        self._flush_task = asyncio.create_task(self._flush_every(sink, settings.flush_interval_seconds))
+        exporter: Final = HttpExporter(client, settings.endpoint)
+        instance: Final = InstanceInfo(instance_id=uuid.uuid4().hex, litellm_version=litellm_version)
+        register(TelemetryAttemptLogger(lambda: self.sink, deployment_hasher(instance.instance_id)))
+        await self._refresh(policy, stored, exporter, instance)
+        self._flush_task = asyncio.create_task(
+            self._flush_every(policy, stored, exporter, instance, settings.flush_interval_seconds)
+        )
 
-    @staticmethod
-    async def _flush_every(sink: TelemetrySink, interval_s: float) -> None:
+    async def _refresh(
+        self, policy: EnvPolicy, stored: StoredConsent, exporter: Exporter, instance: InstanceInfo
+    ) -> None:
+        current: Final = self.sink
+        try:
+            consent: Final = policy.effective(await stored())
+        except Exception:  # noqa: BLE001 -- a failed settings read keeps the current groups rather than flapping off
+            verbose_proxy_logger.debug("telemetry: could not read stored settings", exc_info=True)
+            return
+        if current is not None and current.consent == consent:
+            return
+        if consent == OFF:
+            self.sink = None
+            return
+        gated: Final = ConsentGatedSink(AggregatingSink(exporter), consent)
+        gated.set_instance(instance)
+        self.sink = gated
+
+    async def _flush_every(
+        self, policy: EnvPolicy, stored: StoredConsent, exporter: Exporter, instance: InstanceInfo, interval_s: float
+    ) -> None:
         while True:
             await asyncio.sleep(interval_s)
+            await self._flush_current()
+            await self._refresh(policy, stored, exporter, instance)
+
+    async def _flush_current(self) -> None:
+        sink: Final = self.sink
+        if sink is not None:
             await sink.flush()
 
     async def stop(self) -> None:
-        sink: Final = self.sink
-        if sink is None:
-            return
         flush_task: Final = self._flush_task
         if flush_task is not None:
             flush_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await flush_task
         await asyncio.gather(*self._pending, return_exceptions=True)
-        await sink.flush()
+        await self._flush_current()
         self.sink = None

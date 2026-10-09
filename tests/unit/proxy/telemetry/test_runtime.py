@@ -4,42 +4,91 @@ from typing import Final
 import pytest
 
 from litellm.proxy.telemetry.attempt_logger import TelemetryAttemptLogger
-from litellm.proxy.telemetry.runtime import TelemetryRuntime, TelemetrySettings, deployment_hasher
+from litellm.proxy.telemetry.runtime import TelemetryRuntime, deployment_hasher
+from litellm.proxy.telemetry.settings import TelemetrySettings
+from litellm.telemetry.consent import TelemetryConsent
+from litellm.telemetry.records import TelemetryGroup
+
+_ENDPOINT: Final = "http://127.0.0.1:9"
+_HEARTBEAT: Final = TelemetryConsent(frozenset({TelemetryGroup.HEARTBEAT}))
+
+
+async def _stored_heartbeat() -> TelemetryConsent | None:
+    return _HEARTBEAT
+
+
+async def _broken_store() -> TelemetryConsent | None:
+    raise ConnectionError("db down")
 
 
 @pytest.mark.parametrize(
     "settings",
     [
         TelemetrySettings(),
-        TelemetrySettings(level="off", endpoint="https://telemetry.example"),
-        TelemetrySettings(level="verbose", endpoint="https://telemetry.example"),
-        TelemetrySettings(level="basic"),
+        TelemetrySettings(groups="", endpoint=_ENDPOINT),
+        TelemetrySettings(groups="heartbeat,verbose", endpoint=_ENDPOINT),
+        TelemetrySettings(groups="heartbeat"),
+        TelemetrySettings(groups="heartbeat", endpoint=_ENDPOINT, disabled=True),
     ],
 )
 @pytest.mark.asyncio
-async def test_telemetry_stays_off_unless_a_known_level_and_an_endpoint_are_both_set(
+async def test_telemetry_stays_off_unless_valid_groups_and_an_endpoint_are_set_and_not_vetoed(
     settings: TelemetrySettings,
 ) -> None:
     registered: Final[list[TelemetryAttemptLogger]] = []  # mutable-ok: captures the register callback
     runtime: Final = TelemetryRuntime()
-    runtime.start(litellm_version="1.0.0", settings=settings, register=registered.append)
+    await runtime.start(litellm_version="1.0.0", settings=settings, register=registered.append)
     assert runtime.sink is None
     assert registered == []
 
 
 @pytest.mark.asyncio
-async def test_an_enabled_runtime_registers_the_attempt_logger_and_stops_cleanly() -> None:
+async def test_pinned_groups_register_the_attempt_logger_and_stop_cleanly() -> None:
     registered: Final[list[TelemetryAttemptLogger]] = []  # mutable-ok: captures the register callback
     runtime: Final = TelemetryRuntime()
-    runtime.start(
+    await runtime.start(
         litellm_version="1.0.0",
-        settings=TelemetrySettings(level="BASIC", endpoint="http://127.0.0.1:9", flush_interval_seconds=3600),
+        settings=TelemetrySettings(groups="HEARTBEAT", endpoint=_ENDPOINT, flush_interval_seconds=3600),
         register=registered.append,
     )
-    assert runtime.sink is not None
+    assert runtime.sink is not None and runtime.sink.consent == _HEARTBEAT
     assert len(registered) == 1
     await runtime.stop()
     assert runtime.sink is None
+
+
+@pytest.mark.asyncio
+async def test_stored_groups_apply_when_no_groups_are_pinned_and_a_veto_ignores_them() -> None:
+    enabled: Final = TelemetryRuntime()
+    await enabled.start(
+        litellm_version="1.0.0",
+        settings=TelemetrySettings(endpoint=_ENDPOINT, flush_interval_seconds=3600),
+        register=lambda _logger: None,
+        stored=_stored_heartbeat,
+    )
+    vetoed: Final = TelemetryRuntime()
+    await vetoed.start(
+        litellm_version="1.0.0",
+        settings=TelemetrySettings(endpoint=_ENDPOINT, disabled=True),
+        register=lambda _logger: None,
+        stored=_stored_heartbeat,
+    )
+    assert enabled.sink is not None and enabled.sink.consent == _HEARTBEAT
+    assert vetoed.sink is None
+    await enabled.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_failing_settings_store_leaves_telemetry_off_instead_of_crashing_startup() -> None:
+    runtime: Final = TelemetryRuntime()
+    await runtime.start(
+        litellm_version="1.0.0",
+        settings=TelemetrySettings(endpoint=_ENDPOINT, flush_interval_seconds=3600),
+        register=lambda _logger: None,
+        stored=_broken_store,
+    )
+    assert runtime.sink is None
+    await runtime.stop()
 
 
 def test_deployment_hashes_are_stable_per_install_and_differ_across_installs() -> None:
@@ -51,9 +100,9 @@ def test_deployment_hashes_are_stable_per_install_and_differ_across_installs() -
 @pytest.mark.asyncio
 async def test_stop_waits_for_in_flight_request_finalizers_before_the_last_flush() -> None:
     runtime: Final = TelemetryRuntime()
-    runtime.start(
+    await runtime.start(
         litellm_version="1.0.0",
-        settings=TelemetrySettings(level="basic", endpoint="http://127.0.0.1:9", flush_interval_seconds=3600),
+        settings=TelemetrySettings(groups="heartbeat", endpoint=_ENDPOINT, flush_interval_seconds=3600),
         register=lambda _logger: None,
     )
     finished: Final[list[bool]] = []  # mutable-ok: records that the finalizer ran to completion

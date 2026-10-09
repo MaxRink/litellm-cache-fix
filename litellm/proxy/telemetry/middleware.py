@@ -12,6 +12,8 @@ from litellm.proxy.telemetry.request_context import AttemptObservation, RequestA
 from litellm.telemetry.records import RequestRecord, StatusClass, TokenCounts
 from litellm.telemetry.sink import TelemetrySink
 
+RUST_RESPONSE_HEADER: Final = b"x-litellm-rust"
+
 Spawn: TypeAlias = Callable[[Coroutine[None, None, None]], None]
 
 
@@ -22,6 +24,7 @@ class ResponseTiming:
     total_ms: float
     to_headers_ms: float | None
     to_first_body_ms: float | None
+    rust: bool = False
 
 
 def _final_observation(observations: tuple[AttemptObservation, ...]) -> AttemptObservation | None:
@@ -42,6 +45,7 @@ def build_request_record(
         deployment_hash=final.attempt.deployment_hash if final is not None else None,
         provider_status=final.attempt.provider_status if final is not None else StatusClass.NONE,
         litellm_cache_hit=final is not None and final.litellm_cache_hit,
+        rust=timing.rust,
         provider_cache_hit=final is not None and final.tokens.cache_read > 0,
         provider_attempts=sum(not observation.litellm_cache_hit for observation in observations),
         tokens=final.tokens if final is not None else TokenCounts(),
@@ -67,6 +71,10 @@ def _str_field(asgi_mapping: Mapping[str, object], key: str, default: str) -> st
     return value if isinstance(value, str) else default
 
 
+def _handled_by_rust(headers: tuple[tuple[bytes, bytes], ...]) -> bool:
+    return any(name.lower() == RUST_RESPONSE_HEADER and value == b"true" for name, value in headers)
+
+
 def _is_event_stream(headers: tuple[tuple[bytes, bytes], ...]) -> bool:
     return any(name.lower() == b"content-type" and value.startswith(b"text/event-stream") for name, value in headers)
 
@@ -77,6 +85,7 @@ class _ResponseObserver:
         self.started: Final = clock()
         self.status_code: int = 500
         self.stream: bool = False
+        self.rust: bool = False
         self.headers_at: float | None = None
         self.first_body_at: float | None = None
 
@@ -86,7 +95,9 @@ class _ResponseObserver:
                 status: Final = message.get("status")
                 self.status_code = status if isinstance(status, int) else self.status_code
                 self.headers_at = self._clock()
-                self.stream = _is_event_stream(_headers(message))
+                headers: Final = _headers(message)
+                self.stream = _is_event_stream(headers)
+                self.rust = _handled_by_rust(headers)
             case "http.response.body" if self.first_body_at is None and message.get("body"):
                 self.first_body_at = self._clock()
             case _:
@@ -100,6 +111,7 @@ class _ResponseObserver:
             total_ms=(ended - self.started) * 1000,
             to_headers_ms=_elapsed_ms(self.started, self.headers_at),
             to_first_body_ms=_elapsed_ms(self.started, self.first_body_at),
+            rust=self.rust,
         )
 
 
