@@ -41,11 +41,15 @@ class _RememberingExporter:
         return outcome
 
 
-def _exporter(endpoint: str | None, store: TelemetryStore | None) -> Exporter:
+def shared_http_client() -> httpx.AsyncClient:
+    return get_async_httpx_client(httpxSpecialProvider.LoggingCallback, params={"timeout": 10.0}).client
+
+
+def _exporter(
+    endpoint: str | None, store: TelemetryStore | None, http_client: Callable[[], httpx.AsyncClient]
+) -> Exporter:
     if endpoint is not None:
-        return HttpExporter(
-            get_async_httpx_client(httpxSpecialProvider.LoggingCallback, params={"timeout": 10.0}).client, endpoint
-        )
+        return HttpExporter(http_client(), endpoint)
     assert store is not None, "start() returns early when there is neither an endpoint nor a database"
     return LocalTableExporter(store)
 
@@ -81,6 +85,7 @@ class TelemetryRuntime:
         settings: TelemetrySettings,
         db: Callable[[], Database | None],
         register: Callable[[TelemetryAttemptLogger], None],
+        http_client: Callable[[], httpx.AsyncClient] = shared_http_client,
     ) -> None:
         self.settings, self.litellm_version = settings, litellm_version
         policy: Final = env_policy(settings)
@@ -95,7 +100,7 @@ class TelemetryRuntime:
         if settings.endpoint is None and store is None:
             return
         self.store = store
-        self._exporter = _RememberingExporter(_exporter(settings.endpoint, store))
+        self._exporter = _RememberingExporter(_exporter(settings.endpoint, store, http_client))
         register(TelemetryAttemptLogger(lambda: self.sink, self._hash_deployment))
         await self.refresh()
         self._flush_task = asyncio.create_task(self._flush_every(settings.flush_interval_seconds))
