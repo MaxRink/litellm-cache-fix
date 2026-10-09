@@ -5,6 +5,8 @@ import uuid
 from collections.abc import Awaitable, Callable, Coroutine
 from typing import Final, TypeAlias
 
+import httpx
+
 from litellm._logging import verbose_proxy_logger
 from litellm.llms.custom_httpx.http_handler import (
     get_async_httpx_client,  # pyright: ignore[reportUnknownVariableType]  # legacy params: dict signature
@@ -17,6 +19,11 @@ from litellm.telemetry.http_exporter import HttpExporter
 from litellm.telemetry.records import InstanceInfo
 from litellm.telemetry.sink import Exporter
 from litellm.types.llms.custom_http import httpxSpecialProvider
+
+
+def shared_http_client() -> httpx.AsyncClient:
+    return get_async_httpx_client(httpxSpecialProvider.LoggingCallback, params={"timeout": 10.0}).client
+
 
 StoredConsent: TypeAlias = Callable[[], Awaitable[TelemetryConsent | None]]
 
@@ -51,6 +58,7 @@ class TelemetryRuntime:
         settings: TelemetrySettings,
         register: Callable[[TelemetryAttemptLogger], None],
         stored: StoredConsent = nothing_stored,
+        http_client: Callable[[], httpx.AsyncClient] = shared_http_client,
     ) -> None:
         policy: Final = env_policy(settings)
         if not isinstance(policy, EnvPolicy):
@@ -61,8 +69,7 @@ class TelemetryRuntime:
             return
         if settings.endpoint is None:
             return
-        client: Final = get_async_httpx_client(httpxSpecialProvider.LoggingCallback, params={"timeout": 10.0}).client
-        exporter: Final = HttpExporter(client, settings.endpoint)
+        exporter: Final = HttpExporter(http_client(), settings.endpoint)
         instance: Final = InstanceInfo(instance_id=uuid.uuid4().hex, litellm_version=litellm_version)
         register(TelemetryAttemptLogger(lambda: self.sink, deployment_hasher(instance.instance_id)))
         await self._refresh(policy, stored, exporter, instance)

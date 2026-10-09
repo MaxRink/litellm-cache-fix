@@ -1,6 +1,7 @@
 import asyncio
 from typing import Final
 
+import httpx
 import pytest
 
 from litellm.proxy.telemetry.attempt_logger import TelemetryAttemptLogger
@@ -9,7 +10,13 @@ from litellm.proxy.telemetry.settings import TelemetrySettings
 from litellm.telemetry.consent import ConsentGatedSink, TelemetryConsent
 from litellm.telemetry.records import AttemptRecord, InstanceInfo, RequestRecord, TelemetryGroup, UIEvent
 
-_ENDPOINT: Final = "http://127.0.0.1:9"
+_ENDPOINT: Final = "http://telemetry.invalid/v1/reports"
+
+
+def _offline() -> httpx.AsyncClient:
+    return httpx.AsyncClient(transport=httpx.MockTransport(lambda _request: httpx.Response(204)))
+
+
 _HEARTBEAT: Final = TelemetryConsent(frozenset({TelemetryGroup.HEARTBEAT}))
 
 
@@ -37,7 +44,7 @@ async def test_telemetry_stays_off_unless_valid_groups_and_an_endpoint_are_set_a
 ) -> None:
     registered: Final[list[TelemetryAttemptLogger]] = []  # mutable-ok: captures the register callback
     runtime: Final = TelemetryRuntime()
-    await runtime.start(litellm_version="1.0.0", settings=settings, register=registered.append)
+    await runtime.start(litellm_version="1.0.0", settings=settings, register=registered.append, http_client=_offline)
     assert runtime.sink is None
     assert registered == []
 
@@ -50,6 +57,7 @@ async def test_pinned_groups_register_the_attempt_logger_and_stop_cleanly() -> N
         litellm_version="1.0.0",
         settings=TelemetrySettings(groups="HEARTBEAT", endpoint=_ENDPOINT, flush_interval_seconds=3600),
         register=registered.append,
+        http_client=_offline,
     )
     assert runtime.sink is not None and runtime.sink.consent == _HEARTBEAT
     assert len(registered) == 1
@@ -64,6 +72,7 @@ async def test_stored_groups_apply_when_no_groups_are_pinned_and_a_veto_ignores_
         litellm_version="1.0.0",
         settings=TelemetrySettings(endpoint=_ENDPOINT, flush_interval_seconds=3600),
         register=lambda _logger: None,
+        http_client=_offline,
         stored=_stored_heartbeat,
     )
     vetoed: Final = TelemetryRuntime()
@@ -71,6 +80,7 @@ async def test_stored_groups_apply_when_no_groups_are_pinned_and_a_veto_ignores_
         litellm_version="1.0.0",
         settings=TelemetrySettings(endpoint=_ENDPOINT, disabled=True),
         register=lambda _logger: None,
+        http_client=_offline,
         stored=_stored_heartbeat,
     )
     assert enabled.sink is not None and enabled.sink.consent == _HEARTBEAT
@@ -85,6 +95,7 @@ async def test_a_failing_settings_store_leaves_telemetry_off_instead_of_crashing
         litellm_version="1.0.0",
         settings=TelemetrySettings(endpoint=_ENDPOINT, flush_interval_seconds=3600),
         register=lambda _logger: None,
+        http_client=_offline,
         stored=_broken_store,
     )
     assert runtime.sink is None
@@ -104,6 +115,7 @@ async def test_stop_waits_for_in_flight_request_finalizers_before_the_last_flush
         litellm_version="1.0.0",
         settings=TelemetrySettings(groups="heartbeat", endpoint=_ENDPOINT, flush_interval_seconds=3600),
         register=lambda _logger: None,
+        http_client=_offline,
     )
     finished: Final[list[bool]] = []  # mutable-ok: records that the finalizer ran to completion
 
@@ -150,6 +162,7 @@ async def test_stop_during_an_export_lets_that_export_finish() -> None:
         litellm_version="1.0.0",
         settings=TelemetrySettings(groups="heartbeat", endpoint=_ENDPOINT, flush_interval_seconds=0.001),
         register=lambda _logger: None,
+        http_client=_offline,
     )
     held: Final = _HeldFlushSink()
     runtime.sink = ConsentGatedSink(held, _HEARTBEAT)

@@ -130,7 +130,8 @@ class TelemetryAttemptLogger(CustomLogger):
         observation: Final = observe(
             logged, succeeded=succeeded, messages=kwargs.get("messages"), hash_deployment=self._hash_deployment
         )
-        sink.record_attempt(observation.attempt)
+        if not observation.litellm_cache_hit:
+            sink.record_attempt(observation.attempt)
         request: Final[RequestAccumulator | None] = current_request.get()
         if request is not None:
             request.add(observation)
