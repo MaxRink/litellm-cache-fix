@@ -36,6 +36,7 @@ class TelemetryRuntime:
         self.sink: ConsentGatedSink | None = None
         self.policy: EnvPolicy | None = None
         self._flush_task: asyncio.Task[None] | None = None
+        self._flushing: asyncio.Future[None] | None = None
         self._pending: Final[set[asyncio.Task[None]]] = set()  # mutable-ok: strong refs keep finalizers alive
 
     def spawn(self, coroutine: Coroutine[None, None, None]) -> None:
@@ -92,8 +93,13 @@ class TelemetryRuntime:
     ) -> None:
         while True:
             await asyncio.sleep(interval_s)
-            await self._flush_current()
+            await self._flush_window()
             await self._refresh(policy, stored, exporter, instance)
+
+    async def _flush_window(self) -> None:
+        flushing: Final = asyncio.ensure_future(self._flush_current())
+        self._flushing = flushing
+        await asyncio.shield(flushing)
 
     async def _flush_current(self) -> None:
         sink: Final = self.sink
@@ -106,6 +112,9 @@ class TelemetryRuntime:
             flush_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await flush_task
+        flushing: Final = self._flushing
+        if flushing is not None:
+            await asyncio.gather(flushing, return_exceptions=True)
         await asyncio.gather(*self._pending, return_exceptions=True)
         await self._flush_current()
         self.sink = None

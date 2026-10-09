@@ -101,7 +101,7 @@ def _client(sink: _RecordingSink, spawned: _Spawned, *, settle_timeout_s: float 
         ]
     )
     wrapped: Final = TelemetryMiddleware(
-        app, sink_provider=lambda: sink, spawn=spawned, settle_timeout_s=settle_timeout_s, clock=_Clock()
+        app, sink_provider=lambda: sink, spawn=spawned, settle_timeout_s=lambda: settle_timeout_s, clock=_Clock()
     )
     return AsyncClient(transport=ASGITransport(app=wrapped), base_url="http://proxy")
 

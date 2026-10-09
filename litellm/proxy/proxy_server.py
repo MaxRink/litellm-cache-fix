@@ -754,7 +754,7 @@ from litellm.proxy.spend_tracking.spend_event_producer import (
 )
 from litellm.proxy.telemetry.middleware import TelemetryMiddleware
 from litellm.proxy.telemetry.runtime import TelemetryRuntime
-from litellm.proxy.telemetry.settings import TelemetrySettings
+from litellm.proxy.telemetry.settings import load_settings as load_telemetry_settings
 
 try:
     from litellm.proxy.enterprise_billing.billing_metrics import (
@@ -1735,11 +1735,17 @@ async def proxy_startup_event(app: FastAPI) -> AsyncGenerator[ProxyLifespanState
             else ()
         )
 
-        await telemetry_runtime.start(
-            litellm_version=version,
-            settings=TelemetrySettings(),
-            register=litellm.logging_callback_manager.add_litellm_callback,
-        )
+        telemetry_settings: Final = load_telemetry_settings()
+        if isinstance(telemetry_settings, ValidationError):
+            verbose_proxy_logger.warning(
+                "telemetry: invalid LITELLM_TELEMETRY_* settings, leaving it off: %s", telemetry_settings
+            )
+        else:
+            await telemetry_runtime.start(
+                litellm_version=version,
+                settings=telemetry_settings,
+                register=litellm.logging_callback_manager.add_litellm_callback,
+            )
         try:
             async with AsyncExitStack() as admin_mcp_stack:
                 try:
@@ -2657,7 +2663,12 @@ app.add_middleware(
     sink_factory=lambda: gateway_request_accumulator if prisma_client is not None else None,
 )
 telemetry_runtime: Final = TelemetryRuntime()
-app.add_middleware(TelemetryMiddleware, sink_provider=lambda: telemetry_runtime.sink, spawn=telemetry_runtime.spawn)
+app.add_middleware(
+    TelemetryMiddleware,
+    sink_provider=lambda: telemetry_runtime.sink,
+    spawn=telemetry_runtime.spawn,
+    settle_timeout_s=lambda: telemetry_runtime.settings.settle_timeout_seconds,
+)
 app.add_middleware(BudgetReservationReleaseMiddleware, release=release_unbound_budget_reservation)
 app.add_middleware(RedisRequestBatchMiddleware)
 app.add_middleware(InFlightRequestsMiddleware)

@@ -6,8 +6,8 @@ import pytest
 from litellm.proxy.telemetry.attempt_logger import TelemetryAttemptLogger
 from litellm.proxy.telemetry.runtime import TelemetryRuntime, deployment_hasher
 from litellm.proxy.telemetry.settings import TelemetrySettings
-from litellm.telemetry.consent import TelemetryConsent
-from litellm.telemetry.records import TelemetryGroup
+from litellm.telemetry.consent import ConsentGatedSink, TelemetryConsent
+from litellm.telemetry.records import AttemptRecord, InstanceInfo, RequestRecord, TelemetryGroup, UIEvent
 
 _ENDPOINT: Final = "http://127.0.0.1:9"
 _HEARTBEAT: Final = TelemetryConsent(frozenset({TelemetryGroup.HEARTBEAT}))
@@ -121,3 +121,41 @@ async def test_stopping_a_runtime_that_never_started_is_a_no_op() -> None:
     runtime: Final = TelemetryRuntime()
     await runtime.stop()
     assert runtime.sink is None
+
+
+class _HeldFlushSink:
+    def __init__(self) -> None:
+        self.started: Final = asyncio.Event()
+        self.release: Final = asyncio.Event()
+        self.flushes: Final[list[bool]] = []  # mutable-ok: records each flush that ran to completion
+
+    def set_instance(self, info: InstanceInfo) -> None: ...
+
+    def record_request(self, record: RequestRecord) -> None: ...
+
+    def record_attempt(self, record: AttemptRecord) -> None: ...
+
+    def record_ui_event(self, event: UIEvent) -> None: ...
+
+    async def flush(self) -> None:
+        self.started.set()
+        await self.release.wait()
+        self.flushes.append(True)
+
+
+@pytest.mark.asyncio
+async def test_stop_during_an_export_lets_that_export_finish() -> None:
+    runtime: Final = TelemetryRuntime()
+    await runtime.start(
+        litellm_version="1.0.0",
+        settings=TelemetrySettings(groups="heartbeat", endpoint=_ENDPOINT, flush_interval_seconds=0.001),
+        register=lambda _logger: None,
+    )
+    held: Final = _HeldFlushSink()
+    runtime.sink = ConsentGatedSink(held, _HEARTBEAT)
+    await held.started.wait()
+    stopping: Final = asyncio.create_task(runtime.stop())
+    await asyncio.sleep(0)
+    held.release.set()
+    await stopping
+    assert len(held.flushes) == 2
