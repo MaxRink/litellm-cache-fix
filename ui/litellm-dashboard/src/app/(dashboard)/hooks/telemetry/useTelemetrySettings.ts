@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createQueryKeys } from "../common/queryKeysFactory";
 import useAuthorized from "@/app/(dashboard)/hooks/useAuthorized";
 import { fetchClient } from "@/lib/http/api";
+import { setPageNavigationEnabled } from "@/lib/telemetry/uiEvents";
 import type { components } from "@/lib/http/schema";
 import { all_admin_roles } from "@/utils/roles";
 
@@ -35,6 +36,9 @@ export const useUpdateTelemetrySettings = () => {
       if (data === undefined) throw new Error(JSON.stringify(error));
       return data;
     },
-    onSuccess: (settings) => queryClient.setQueryData(telemetrySettingsKeys.detail("current"), settings),
+    onSuccess: (settings) => {
+      queryClient.setQueryData(telemetrySettingsKeys.detail("current"), settings);
+      setPageNavigationEnabled(settings.groups.some(({ group, enabled }) => group === "page_navigation" && enabled));
+    },
   });
 };
