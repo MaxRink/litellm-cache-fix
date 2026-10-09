@@ -33,7 +33,7 @@ class RequestAccumulator:
             self._succeeded.set()
 
     async def wait_for_success(self, timeout_s: float) -> None:
-        with contextlib.suppress(TimeoutError):
+        with contextlib.suppress(asyncio.TimeoutError):
             await asyncio.wait_for(self._succeeded.wait(), timeout_s)
 
 
