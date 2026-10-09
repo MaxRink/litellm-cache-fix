@@ -1,0 +1,4 @@
+ARG LITELLM_BASE_IMAGE=ghcr.io/berriai/litellm@sha256:3d88bd757134a00e8c00237b85a021ab1f6d54abb9c1df750f411dbe7256a500
+FROM ${LITELLM_BASE_IMAGE}
+COPY homelab/patch_otel.py /tmp/patch_otel.py
+RUN python3 /tmp/patch_otel.py && rm /tmp/patch_otel.py
