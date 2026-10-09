@@ -113,7 +113,7 @@ class RequestRecord:
     deployment_hash: str | None = None
     provider_status: StatusClass = StatusClass.NONE
     litellm_cache_hit: bool = False
-    rust: bool = False
+    handled_by_rust: bool = False
     provider_cache_hit: bool = False
     provider_attempts: int = 0
     tokens: TokenCounts = field(default_factory=TokenCounts)

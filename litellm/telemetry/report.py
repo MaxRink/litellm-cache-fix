@@ -39,7 +39,7 @@ class RequestKey:
     litellm_status: StatusClass
     provider_status: StatusClass
     litellm_cache_hit: bool
-    rust: bool
+    handled_by_rust: bool
     provider_cache_hit: bool
     stream: bool
 
@@ -52,7 +52,7 @@ class RequestKey:
             litellm_status=record.litellm_status,
             provider_status=record.provider_status,
             litellm_cache_hit=record.litellm_cache_hit,
-            rust=record.rust,
+            handled_by_rust=record.handled_by_rust,
             provider_cache_hit=record.provider_cache_hit,
             stream=record.stream,
         )
@@ -168,7 +168,7 @@ def _request_json(key: RequestKey, metrics: RequestMetrics, groups: frozenset[Te
         "litellm_status": _enum_value(key.litellm_status),
         "provider_status": _enum_value(key.provider_status),
         "litellm_cache_hit": key.litellm_cache_hit,
-        "rust": key.rust,
+        "handled_by_rust": key.handled_by_rust,
         "stream": key.stream,
         "request_count": metrics.request_count,
         "provider_attempts": _histogram_json(metrics.provider_attempts),

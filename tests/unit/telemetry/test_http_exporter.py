@@ -66,7 +66,7 @@ async def test_posts_the_report_as_json() -> None:
                 "litellm_status": "2xx",
                 "provider_status": "2xx",
                 "litellm_cache_hit": False,
-                "rust": False,
+                "handled_by_rust": False,
                 "provider_cache_hit": False,
                 "stream": True,
                 "request_count": 1,
