@@ -41,6 +41,7 @@ class TelemetryRuntime:
 
     def __init__(self) -> None:
         self.sink: ConsentGatedSink | None = None
+        self.settings: TelemetrySettings = TelemetrySettings.model_construct()
         self.policy: EnvPolicy | None = None
         self._flush_task: asyncio.Task[None] | None = None
         self._flushing: asyncio.Future[None] | None = None
@@ -60,6 +61,7 @@ class TelemetryRuntime:
         stored: StoredConsent = nothing_stored,
         http_client: Callable[[], httpx.AsyncClient] = shared_http_client,
     ) -> None:
+        self.settings = settings
         policy: Final = env_policy(settings)
         if not isinstance(policy, EnvPolicy):
             verbose_proxy_logger.warning("telemetry: %s in LITELLM_TELEMETRY_GROUPS, leaving it off", policy.message())
