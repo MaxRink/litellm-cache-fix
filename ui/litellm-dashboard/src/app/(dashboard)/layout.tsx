@@ -24,7 +24,8 @@ import { Button } from "@/components/ui/button";
 import { Menu } from "lucide-react";
 import { useMediaQuery } from "usehooks-ts";
 import { CommandPaletteProvider } from "@/components/CommandPalette/CommandPaletteProvider";
-import { recordUiEvent } from "@/lib/telemetry/uiEvents";
+import { recordUiEvent, refreshPageNavigationEnabled } from "@/lib/telemetry/uiEvents";
+import TelemetryEnvBanner from "@/app/(dashboard)/telemetry/_components/TelemetryEnvBanner";
 
 const pluginApiClient = createApiClient({ getBaseUrl: () => getProxyBaseUrl() ?? "" });
 
@@ -113,7 +114,9 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const routeSegment = routeSegmentForPathname(pathname);
   useEffect(() => {
-    recordUiEvent({ page: routeSegment || "home", action: "view" });
+    void refreshPageNavigationEnabled()
+      .catch(() => undefined)
+      .then(() => recordUiEvent({ page: routeSegment || "home", action: "view" }));
   }, [routeSegment]);
   const searchParams = useSearchParams();
   const navigationKey = `${pathname}?${searchParams.toString()}`;
@@ -192,7 +195,10 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
               <LicenseExpiryBanner accessToken={accessToken} />
               <UserBanner accessToken={accessToken} />
               <UpgradeBanner accessToken={accessToken} />
-              <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
+              <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+                <TelemetryEnvBanner />
+                {children}
+              </main>
             </div>
           </CommandPaletteProvider>
         </LiteAdminFrame>

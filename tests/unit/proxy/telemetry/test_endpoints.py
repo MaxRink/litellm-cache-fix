@@ -14,6 +14,7 @@ from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.telemetry.endpoints import (
     TelemetrySettingsResponse,
     router,
+    telemetry_consent,
     telemetry_runtime_dependency,
     telemetry_sink,
     telemetry_store,
@@ -21,7 +22,8 @@ from litellm.proxy.telemetry.endpoints import (
 from litellm.proxy.telemetry.runtime import TelemetryRuntime
 from litellm.proxy.telemetry.settings import TelemetrySettings
 from litellm.proxy.telemetry.store import TelemetryStore
-from litellm.telemetry.records import AttemptRecord, InstanceInfo, RequestRecord, UIAction, UIEvent
+from litellm.telemetry.consent import TelemetryConsent
+from litellm.telemetry.records import AttemptRecord, InstanceInfo, RequestRecord, TelemetryGroup, UIAction, UIEvent
 from litellm.telemetry.sink import TelemetrySink
 from tests.unit.proxy.telemetry.fake_database import SettingsDatabase
 
@@ -277,3 +279,23 @@ async def test_env_vars_lock_the_settings_and_are_listed_without_their_values(
     assert (body.vetoed, body.editable, _enabled(read)) == (True, False, ())
     assert body.environment_variables == ("LITELLM_TELEMETRY_DISABLED", "LITELLM_TELEMETRY_ENDPOINT")
     assert "secret" not in read.text
+
+
+@pytest.mark.parametrize(
+    ("groups", "enabled"),
+    [
+        (frozenset({TelemetryGroup.HEARTBEAT, TelemetryGroup.PAGE_NAVIGATION}), True),
+        (frozenset({TelemetryGroup.HEARTBEAT, TelemetryGroup.REQUEST_SUCCESS}), False),
+        (frozenset[TelemetryGroup](), False),
+    ],
+)
+def test_any_ui_user_can_ask_whether_page_navigation_events_are_wanted(
+    groups: frozenset[TelemetryGroup], enabled: bool
+) -> None:
+    app: Final = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[user_api_key_auth] = lambda: UserAPIKeyAuth(user_role=LitellmUserRoles.INTERNAL_USER)
+    app.dependency_overrides[telemetry_consent] = lambda: TelemetryConsent(groups)
+    response: Final = TestClient(app).get("/telemetry/ui_events/enabled")
+    assert response.status_code == 200, response.text
+    assert response.json() == {"enabled": enabled}

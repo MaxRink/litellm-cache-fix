@@ -193,3 +193,25 @@ async def update_telemetry_settings(
         "telemetry: %s set groups to %s", user_api_key_dict.user_id, sorted(g.value for g in consent.groups)
     )
     return await _settings_response(runtime, consent)
+
+
+class UIEventsEnabledResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool
+
+
+def telemetry_consent() -> TelemetryConsent:
+    from litellm.proxy.proxy_server import telemetry_runtime
+
+    sink: Final = telemetry_runtime.sink
+    return sink.consent if sink is not None else OFF
+
+
+@router.get("/telemetry/ui_events/enabled", tags=["Telemetry"], response_model=UIEventsEnabledResponse)
+async def ui_events_enabled(
+    _user_api_key_dict: Annotated[UserAPIKeyAuth, Depends(user_api_key_auth)],
+    consent: Annotated[TelemetryConsent, Depends(telemetry_consent)],
+) -> UIEventsEnabledResponse:
+    """Whether the Admin UI should send page navigation events in the current report window"""
+    return UIEventsEnabledResponse(enabled=consent.allows(TelemetryGroup.PAGE_NAVIGATION))
