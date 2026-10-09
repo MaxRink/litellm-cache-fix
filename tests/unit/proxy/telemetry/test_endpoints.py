@@ -107,6 +107,7 @@ async def _settings_client(
     app.include_router(router)
     app.dependency_overrides[user_api_key_auth] = lambda: UserAPIKeyAuth(user_role=role, user_id="admin")
     app.dependency_overrides[telemetry_runtime_dependency] = lambda: runtime
+    app.dependency_overrides[telemetry_store] = lambda: TelemetryStore(db, 30) if db is not None else None
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://proxy"), runtime
 
 
@@ -199,3 +200,13 @@ async def test_env_vars_lock_the_settings_and_are_listed_without_their_values(
     assert (body.vetoed, body.editable, _enabled(read)) == (True, False, ())
     assert body.environment_variables == ("LITELLM_TELEMETRY_DISABLED", "LITELLM_TELEMETRY_ENDPOINT")
     assert "secret" not in read.text
+
+
+@pytest.mark.asyncio
+async def test_a_vetoed_proxy_with_a_database_still_reports_the_local_table_as_its_destination() -> None:
+    db: Final = SettingsDatabase(stored_groups='{"groups": ["heartbeat"]}')
+    client, runtime = await _settings_client(LitellmUserRoles.PROXY_ADMIN, TelemetrySettings(disabled=True), db)
+    async with client:
+        read: Final = await client.get("/telemetry/settings")
+    await runtime.stop()
+    assert (_settings(read).vetoed, _settings(read).destination) == (True, "local_table")

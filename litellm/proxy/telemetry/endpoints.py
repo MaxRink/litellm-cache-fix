@@ -97,13 +97,15 @@ def telemetry_runtime_dependency() -> TelemetryRuntime:
     return telemetry_runtime
 
 
-def _destination(runtime: TelemetryRuntime) -> Literal["https", "local_table", "none"]:
+def _destination(runtime: TelemetryRuntime, has_database: bool) -> Literal["https", "local_table", "none"]:
     if runtime.settings.endpoint is not None:
         return "https"
-    return "local_table" if runtime.store is not None else "none"
+    return "local_table" if has_database else "none"
 
 
-async def _settings_response(runtime: TelemetryRuntime, stored: TelemetryConsent | None) -> TelemetrySettingsResponse:
+async def _settings_response(
+    runtime: TelemetryRuntime, stored: TelemetryConsent | None, has_database: bool
+) -> TelemetrySettingsResponse:
     policy: Final = runtime.policy
     effective: Final = policy.effective(stored) if policy is not None else OFF
     last: Final = runtime.last_report
@@ -124,7 +126,7 @@ async def _settings_response(runtime: TelemetryRuntime, stored: TelemetryConsent
         set_by_environment=policy is None or policy.vetoed or policy.pinned is not None,
         environment_variables=policy.set_variables if policy is not None else (),
         editable=policy is not None and not policy.vetoed and policy.pinned is None and runtime.store is not None,
-        destination=_destination(runtime),
+        destination=_destination(runtime, has_database),
         flush_interval_seconds=runtime.settings.flush_interval_seconds,
         retention_days=runtime.settings.retention_days,
         report=_REPORT_JSON.validate_python(report_to_json(preview)) if preview is not None else None,
@@ -142,11 +144,12 @@ async def _stored(runtime: TelemetryRuntime) -> TelemetryConsent | None:
 async def get_telemetry_settings(
     user_api_key_dict: Annotated[UserAPIKeyAuth, Depends(user_api_key_auth)],
     runtime: Annotated[TelemetryRuntime, Depends(telemetry_runtime_dependency)],
+    store: Annotated[TelemetryStore | None, Depends(telemetry_store)],
 ) -> TelemetrySettingsResponse:
     """Which telemetry groups are on, whether env vars control them, where reports go and a last or sample report"""
     if user_api_key_dict.user_role not in (LitellmUserRoles.PROXY_ADMIN, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY):
         raise HTTPException(status_code=403, detail="Only proxy admin roles can view telemetry settings")
-    return await _settings_response(runtime, await _stored(runtime))
+    return await _settings_response(runtime, await _stored(runtime), store is not None)
 
 
 @router.put("/telemetry/settings", tags=["Telemetry"], response_model=TelemetrySettingsResponse)
@@ -171,4 +174,4 @@ async def update_telemetry_settings(
     verbose_proxy_logger.info(
         "telemetry: %s set groups to %s", user_api_key_dict.user_id, sorted(g.value for g in consent.groups)
     )
-    return await _settings_response(runtime, consent)
+    return await _settings_response(runtime, consent, True)
