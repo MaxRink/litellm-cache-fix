@@ -19,4 +19,4 @@ jobs:
           context: .
           file: Dockerfile.homelab-minimal
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/litellm-otel-fix-minimal:1.104.2
+          tags: ghcr.io/maxrink/litellm-otel-fix-minimal:1.104.2
