@@ -176,4 +176,7 @@ async def test_only_a_response_carrying_the_rust_header_counts_as_handled_by_rus
         python_response: Final = await client.post("/v1/messages", json={})
     assert (rust_response.status_code, python_response.status_code) == (200, 200)
     await spawned.drain()
-    assert [(record.endpoint, record.handled_by_rust) for record in sink.requests] == [("/responses", True), ("/v1/messages", False)]
+    assert [(record.endpoint, record.handled_by_rust) for record in sink.requests] == [
+        ("/responses", True),
+        ("/v1/messages", False),
+    ]
