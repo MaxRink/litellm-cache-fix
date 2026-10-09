@@ -45,7 +45,7 @@ _REQUESTS: Final = (
         provider="anthropic",
         deployment_hash="8c2e5b9f01d34a77",
         provider_status=StatusClass.SERVER_ERROR,
-        rust=True,
+        handled_by_rust=True,
         provider_attempts=3,
         latency_to_headers_ms=9150.0,
         blocks=BlockCounts(total=2, by_type=((BlockType.TEXT, 1), (BlockType.TOOL_RESULT, 1))),
