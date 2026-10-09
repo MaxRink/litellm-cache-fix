@@ -8,7 +8,7 @@ from litellm.telemetry.report import report_to_json
 from litellm.telemetry.sample import sample_report
 
 _REQUEST_FIELDS: Final = {
-    TelemetryGroup.REQUEST_SUCCESS: {"endpoint", "litellm_status", "rust", "latency_total_ms", "request_count"},
+    TelemetryGroup.REQUEST_SUCCESS: {"endpoint", "litellm_status", "handled_by_rust", "latency_total_ms", "request_count"},
     TelemetryGroup.TOKEN_INFO: {"provider_cache_hit", "input_tokens", "cache_read_tokens"},
     TelemetryGroup.REQUEST_TAXONOMY: {"provider", "deployment_hash"},
     TelemetryGroup.EVENT_DETAILS: {"block_count", "block_types", "header_keys"},
