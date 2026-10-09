@@ -11,7 +11,6 @@ import {
   useUpdateTelemetrySettings,
 } from "@/app/(dashboard)/hooks/telemetry/useTelemetrySettings";
 import { GROUP_COPY, PROXY_GROUPS, UI_GROUPS, canEnable, toggleGroup, type Requires } from "./telemetryGroups";
-import { TelemetryEnvNotice } from "./TelemetryEnvBanner";
 
 const TABS = ["proxy", "ui"] as const;
 
@@ -100,7 +99,6 @@ export default function TelemetrySettingsPage() {
           broken page before a user has to report it. Prompts, responses, keys, user and team ids, and header values are
           never collected. Setting LITELLM_TELEMETRY_DISABLED=true turns all of it off regardless of this page.
         </p>
-        <TelemetryEnvNotice settings={settings} />
       </header>
       <Tabs value={tab} onValueChange={(value) => setTab(value as (typeof TABS)[number])}>
         <TabsList variant="line">
