@@ -24,7 +24,7 @@ class ResponseTiming:
     total_ms: float
     to_headers_ms: float | None
     to_first_body_ms: float | None
-    rust: bool = False
+    handled_by_rust: bool = False
 
 
 def _final_observation(observations: tuple[AttemptObservation, ...]) -> AttemptObservation | None:
@@ -45,7 +45,7 @@ def build_request_record(
         deployment_hash=final.attempt.deployment_hash if final is not None else None,
         provider_status=final.attempt.provider_status if final is not None else StatusClass.NONE,
         litellm_cache_hit=final is not None and final.litellm_cache_hit,
-        rust=timing.rust,
+        handled_by_rust=timing.handled_by_rust,
         provider_cache_hit=final is not None and final.tokens.cache_read > 0,
         provider_attempts=sum(not observation.litellm_cache_hit for observation in observations),
         tokens=final.tokens if final is not None else TokenCounts(),
@@ -85,7 +85,7 @@ class _ResponseObserver:
         self.started: Final = clock()
         self.status_code: int = 500
         self.stream: bool = False
-        self.rust: bool = False
+        self.handled_by_rust: bool = False
         self.headers_at: float | None = None
         self.first_body_at: float | None = None
 
@@ -97,7 +97,7 @@ class _ResponseObserver:
                 self.headers_at = self._clock()
                 headers: Final = _headers(message)
                 self.stream = _is_event_stream(headers)
-                self.rust = _handled_by_rust(headers)
+                self.handled_by_rust = _handled_by_rust(headers)
             case "http.response.body" if self.first_body_at is None and message.get("body"):
                 self.first_body_at = self._clock()
             case _:
@@ -111,7 +111,7 @@ class _ResponseObserver:
             total_ms=(ended - self.started) * 1000,
             to_headers_ms=_elapsed_ms(self.started, self.headers_at),
             to_first_body_ms=_elapsed_ms(self.started, self.first_body_at),
-            rust=self.rust,
+            handled_by_rust=self.handled_by_rust,
         )
 
 
