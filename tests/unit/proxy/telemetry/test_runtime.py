@@ -192,3 +192,17 @@ async def test_stop_during_an_export_lets_that_export_finish() -> None:
     held.release.set()
     await stopping
     assert len(held.flushes) == 2
+
+
+async def test_settle_timeout_reads_the_configured_value_after_start_and_the_default_before() -> None:
+    runtime: Final = TelemetryRuntime()
+    assert runtime.settings.settle_timeout_seconds == 2.0
+    await runtime.start(
+        litellm_version="1.0.0",
+        settings=TelemetrySettings(groups="heartbeat", endpoint=_ENDPOINT, settle_timeout_seconds=7.5),
+        db=lambda: None,
+        register=lambda _logger: None,
+        http_client=_offline,
+    )
+    assert runtime.settings.settle_timeout_seconds == 7.5
+    await runtime.stop()
