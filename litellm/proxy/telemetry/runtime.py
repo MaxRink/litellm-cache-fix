@@ -5,6 +5,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Coroutine
 from typing import Final, TypeAlias
 
+import httpx
 from pydantic import ValidationError
 
 from litellm._logging import verbose_proxy_logger
@@ -61,6 +62,7 @@ class TelemetryRuntime:
         self._exporter: _RememberingExporter | None = None
         self._instance: InstanceInfo | None = None
         self._flush_task: asyncio.Task[None] | None = None
+        self._flushing: asyncio.Future[None] | None = None
         self._pending: Final[set[asyncio.Task[None]]] = set()  # mutable-ok: strong refs keep finalizers alive
 
     @property
@@ -141,14 +143,19 @@ class TelemetryRuntime:
             gated: Final = ConsentGatedSink(AggregatingSink(exporter), consent)
             gated.set_instance(await self._instance_info())
             self.sink = gated
-        except (PrismaError, OSError, ValidationError) as e:
+        except (PrismaError, OSError, httpx.HTTPError, ValidationError) as e:
             verbose_proxy_logger.debug("telemetry: keeping the current groups, could not read stored settings: %s", e)
 
     async def _flush_every(self, interval_s: float) -> None:
         while True:
             await asyncio.sleep(interval_s)
-            await self._flush_current()
+            await self._flush_window()
             await self.refresh()
+
+    async def _flush_window(self) -> None:
+        flushing: Final = asyncio.ensure_future(self._flush_current())
+        self._flushing = flushing
+        await asyncio.shield(flushing)
 
     async def _flush_current(self) -> None:
         sink: Final = self.sink
@@ -161,6 +168,9 @@ class TelemetryRuntime:
             flush_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await flush_task
+        flushing: Final = self._flushing
+        if flushing is not None:
+            await asyncio.gather(flushing, return_exceptions=True)
         await asyncio.gather(*self._pending, return_exceptions=True)
         await self._flush_current()
         self.sink = None

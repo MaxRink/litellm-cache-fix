@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Final
 
+from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from litellm.telemetry.consent import OFF, ConsentError, TelemetryConsent, parse_consent
@@ -18,9 +19,16 @@ class TelemetrySettings(BaseSettings):
     disabled: bool = False
     groups: str | None = None
     endpoint: str | None = None
-    flush_interval_seconds: float = 60.0
-    settle_timeout_seconds: float = 2.0
-    retention_days: int = 30
+    flush_interval_seconds: float = Field(default=60.0, gt=0)
+    settle_timeout_seconds: float = Field(default=2.0, ge=0)
+    retention_days: int = Field(default=30, gt=0)
+
+
+def load_settings() -> TelemetrySettings | ValidationError:
+    try:
+        return TelemetrySettings()
+    except ValidationError as e:
+        return e
 
 
 @dataclass(frozen=True, slots=True)

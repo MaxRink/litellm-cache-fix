@@ -128,7 +128,7 @@ class TelemetryMiddleware:
         sink_provider: Callable[[], TelemetrySink | None],
         spawn: Spawn,
         *,
-        settle_timeout_s: float = 2.0,
+        settle_timeout_s: Callable[[], float] = lambda: 2.0,
         clock: Callable[[], float] = time.perf_counter,
     ) -> None:
         self.app: Final = app
@@ -171,7 +171,7 @@ class TelemetryMiddleware:
         header_keys: frozenset[str],
         accumulator: RequestAccumulator,
     ) -> None:
-        await accumulator.wait_for_success(self._settle_timeout_s)
+        await accumulator.wait_for_success(self._settle_timeout_s())
         try:
             sink.record_request(
                 build_request_record(
