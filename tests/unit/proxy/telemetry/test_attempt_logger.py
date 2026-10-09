@@ -130,3 +130,21 @@ async def test_a_proxy_side_reject_that_never_reached_a_provider_is_not_an_attem
         current_request.reset(token)
     assert sink.attempts == ()
     assert request.observations == ()
+
+
+@pytest.mark.asyncio
+async def test_a_litellm_cache_hit_joins_the_request_but_is_not_a_provider_attempt() -> None:
+    sink: Final = _RecordingSink()
+    logger: Final = TelemetryAttemptLogger(lambda: sink, hash_deployment=lambda model_id: f"h({model_id})")
+    request: Final = RequestAccumulator()
+    token: Final = current_request.set(request)
+    try:
+        await logger.async_log_success_event(
+            {"standard_logging_object": {**_payload(), "cache_hit": True}}, None, None, None
+        )
+    finally:
+        current_request.reset(token)
+
+    assert sink.attempts == ()
+    (observation,) = request.observations
+    assert observation.litellm_cache_hit

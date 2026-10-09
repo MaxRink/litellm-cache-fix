@@ -1,6 +1,7 @@
 import asyncio
 from typing import Final
 
+import httpx
 import pytest
 
 from litellm.proxy.telemetry.attempt_logger import TelemetryAttemptLogger
@@ -10,14 +11,22 @@ from litellm.telemetry.consent import ConsentGatedSink, TelemetryConsent
 from litellm.telemetry.records import AttemptRecord, InstanceInfo, RequestRecord, TelemetryGroup, UIEvent
 from tests.unit.proxy.telemetry.fake_database import SettingsDatabase
 
-_ENDPOINT: Final = "http://127.0.0.1:9"
+_ENDPOINT: Final = "http://telemetry.invalid/v1/reports"
+
+
+def _offline() -> httpx.AsyncClient:
+    return httpx.AsyncClient(transport=httpx.MockTransport(lambda _request: httpx.Response(204)))
+
+
 _HEARTBEAT: Final = TelemetryConsent(frozenset({TelemetryGroup.HEARTBEAT}))
 _SUCCESS: Final = TelemetryConsent(frozenset({TelemetryGroup.HEARTBEAT, TelemetryGroup.REQUEST_SUCCESS}))
 
 
 async def _started(settings: TelemetrySettings, db: SettingsDatabase | None) -> TelemetryRuntime:
     runtime: Final = TelemetryRuntime()
-    await runtime.start(litellm_version="1.0.0", settings=settings, db=lambda: db, register=lambda _logger: None)
+    await runtime.start(
+        litellm_version="1.0.0", settings=settings, db=lambda: db, register=lambda _logger: None, http_client=_offline
+    )
     return runtime
 
 
@@ -37,7 +46,9 @@ async def test_without_a_database_telemetry_needs_valid_pinned_groups_an_endpoin
 ) -> None:
     registered: Final[list[TelemetryAttemptLogger]] = []  # mutable-ok: captures the register callback
     runtime: Final = TelemetryRuntime()
-    await runtime.start(litellm_version="1.0.0", settings=settings, db=lambda: None, register=registered.append)
+    await runtime.start(
+        litellm_version="1.0.0", settings=settings, db=lambda: None, register=registered.append, http_client=_offline
+    )
     assert runtime.sink is None
     assert registered == []
 
@@ -66,6 +77,7 @@ async def test_pinned_groups_register_the_attempt_logger_and_stop_cleanly() -> N
         settings=TelemetrySettings(groups="HEARTBEAT", endpoint=_ENDPOINT, flush_interval_seconds=3600),
         db=lambda: None,
         register=registered.append,
+        http_client=_offline,
     )
     assert runtime.sink is not None and runtime.sink.consent == _HEARTBEAT
     assert len(registered) == 1
@@ -170,6 +182,7 @@ async def test_stop_during_an_export_lets_that_export_finish() -> None:
         settings=TelemetrySettings(groups="heartbeat", endpoint=_ENDPOINT, flush_interval_seconds=0.001),
         db=lambda: None,
         register=lambda _logger: None,
+        http_client=_offline,
     )
     held: Final = _HeldFlushSink()
     runtime.sink = ConsentGatedSink(held, _HEARTBEAT)
