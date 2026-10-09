@@ -3,6 +3,7 @@ import uuid
 from collections.abc import Awaitable
 from typing import Final, Protocol
 
+import httpx
 from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter
 from typing_extensions import LiteralString
 
@@ -131,11 +132,11 @@ class LocalTableExporter:
             return ExportOutcome.SENT
         try:
             await self._store.save(report)
-        except (PrismaError, OSError) as e:
+        except (PrismaError, OSError, httpx.HTTPError) as e:
             verbose_proxy_logger.debug("telemetry: could not store the report locally: %s", e)
             return ExportOutcome.RETRY
         try:
             await self._store.prune()
-        except (PrismaError, OSError) as e:
+        except (PrismaError, OSError, httpx.HTTPError) as e:
             verbose_proxy_logger.debug("telemetry: could not prune old local reports: %s", e)
         return ExportOutcome.SENT

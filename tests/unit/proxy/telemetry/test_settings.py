@@ -1,6 +1,8 @@
 import pytest
 
-from litellm.proxy.telemetry.settings import EnvPolicy, TelemetrySettings, env_policy
+from pydantic import ValidationError
+
+from litellm.proxy.telemetry.settings import EnvPolicy, TelemetrySettings, env_policy, load_settings
 from litellm.telemetry.consent import OFF, MissingRequirement, TelemetryConsent, UnknownGroup
 from litellm.telemetry.records import TelemetryGroup
 
@@ -59,3 +61,18 @@ def test_set_variables_lists_every_telemetry_env_var_present_but_never_its_value
     policy = _policy(TelemetrySettings())
     assert policy.set_variables == ("LITELLM_TELEMETRY_DISABLED", "LITELLM_TELEMETRY_ENDPOINT")
     assert policy.vetoed is True
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("LITELLM_TELEMETRY_FLUSH_INTERVAL_SECONDS", "0"),
+        ("LITELLM_TELEMETRY_FLUSH_INTERVAL_SECONDS", "-5"),
+        ("LITELLM_TELEMETRY_SETTLE_TIMEOUT_SECONDS", "-1"),
+    ],
+)
+def test_nonpositive_intervals_are_rejected_instead_of_flooding_the_receiver(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str
+) -> None:
+    monkeypatch.setenv(name, value)
+    assert isinstance(load_settings(), ValidationError)

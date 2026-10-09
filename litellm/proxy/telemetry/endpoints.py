@@ -26,9 +26,15 @@ class TelemetryReportsResponse(BaseModel):
 
 
 def telemetry_store() -> TelemetryStore | None:
-    from litellm.proxy.proxy_server import telemetry_runtime
+    from litellm.proxy.proxy_server import prisma_client, telemetry_runtime
 
-    return telemetry_runtime.store
+    known: Final = telemetry_runtime.store
+    if known is not None or prisma_client is None:
+        return known
+    return TelemetryStore(
+        getattr(prisma_client.db, "writer", prisma_client.db),  # pyright: ignore[reportArgumentType]  # PrismaWrapper forwards raw queries via __getattr__
+        telemetry_runtime.settings.retention_days,
+    )
 
 
 @router.get("/telemetry/reports", tags=["Telemetry"], response_model=TelemetryReportsResponse)
