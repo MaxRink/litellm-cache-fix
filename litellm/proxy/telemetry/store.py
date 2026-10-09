@@ -7,10 +7,12 @@ from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter
 from typing_extensions import LiteralString
 
 from litellm._logging import verbose_proxy_logger
+from litellm.telemetry.consent import ConsentError, TelemetryConsent, parse_consent
 from litellm.telemetry.report import Report, report_to_json
 from litellm.telemetry.sink import ExportOutcome
 
 INSTANCE_ID_PARAM: Final = "telemetry_instance_id"
+SETTINGS_PARAM: Final = "telemetry_settings"
 
 
 class Database(Protocol):
@@ -33,6 +35,19 @@ class StoredReport(BaseModel):
     report: JsonValue
 
 
+class _StoredGroups(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    groups: tuple[str, ...]
+
+
+class _SettingsRow(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    param_value: _StoredGroups
+
+
+_SETTINGS_ROWS: Final = TypeAdapter(tuple[_SettingsRow, ...])
 _INSTANCE_ROWS: Final = TypeAdapter(tuple[_InstanceRow, ...])
 _REPORT_ROWS: Final = TypeAdapter(tuple[StoredReport, ...])
 
@@ -58,6 +73,22 @@ class TelemetryStore:
             )
         )
         return rows[0].instance_id
+
+    async def consent(self) -> TelemetryConsent | ConsentError | None:
+        rows: Final = _SETTINGS_ROWS.validate_python(
+            await self._db.query_raw(
+                """SELECT param_value FROM "LiteLLM_Config" WHERE param_name = $1""", SETTINGS_PARAM
+            )
+        )
+        return parse_consent(rows[0].param_value.groups) if rows else None
+
+    async def save_consent(self, consent: TelemetryConsent) -> None:
+        await self._db.execute_raw(
+            """INSERT INTO "LiteLLM_Config" (param_name, param_value) VALUES ($1, $2::jsonb)
+            ON CONFLICT (param_name) DO UPDATE SET param_value = EXCLUDED.param_value""",
+            SETTINGS_PARAM,
+            json.dumps({"groups": sorted(group.value for group in consent.groups)}),
+        )
 
     async def save(self, report: Report) -> None:
         await self._db.execute_raw(

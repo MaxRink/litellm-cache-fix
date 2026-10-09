@@ -7,9 +7,10 @@ import pytest
 from prisma.errors import PrismaError
 
 from litellm.proxy.telemetry.attempt_logger import TelemetryAttemptLogger
-from litellm.proxy.telemetry.runtime import TelemetryRuntime, TelemetrySettings
+from litellm.proxy.telemetry.runtime import TelemetryRuntime
+from litellm.proxy.telemetry.settings import TelemetrySettings
 from litellm.proxy.telemetry.store import LocalTableExporter, TelemetryStore
-from litellm.telemetry.records import AttemptRecord, InstanceInfo, StatusClass, TelemetryLevel
+from litellm.telemetry.records import AttemptRecord, InstanceInfo, StatusClass
 from litellm.telemetry.report import Report
 from litellm.telemetry.sink import ExportOutcome
 
@@ -33,7 +34,7 @@ class _FakeDatabase:
 
 def _report(*, dropped_records: int = 3) -> Report:
     return Report(
-        instance=InstanceInfo(instance_id="i", litellm_version="1.0.0", telemetry_level=TelemetryLevel.BASIC),
+        instance=InstanceInfo(instance_id="i", litellm_version="1.0.0"),
         window_start=10.0,
         window_end=70.0,
         dropped_records=dropped_records,
@@ -80,7 +81,9 @@ async def test_without_an_endpoint_the_runtime_keeps_reports_locally_under_the_p
     runtime: Final = TelemetryRuntime()
     await runtime.start(
         litellm_version="1.0.0",
-        settings=TelemetrySettings(level="basic", flush_interval_seconds=3600),
+        settings=TelemetrySettings(
+            groups="heartbeat,request_success,token_info,request_taxonomy", flush_interval_seconds=3600
+        ),
         db=lambda: db,
         register=registered.append,
     )

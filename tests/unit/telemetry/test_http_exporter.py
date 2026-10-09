@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from litellm.telemetry.histogram import ATTEMPT_BOUNDS, BLOCK_COUNT_BOUNDS, LATENCY_BOUNDS_MS
-from litellm.telemetry.records import InstanceInfo, RequestRecord, StatusClass, TelemetryLevel
+from litellm.telemetry.records import InstanceInfo, RequestRecord, StatusClass, TelemetryGroup
 from litellm.telemetry.report import Report, RequestKey, RequestMetrics
 from litellm.telemetry.http_exporter import HttpExporter
 from litellm.telemetry.sink import ExportOutcome
@@ -21,7 +21,7 @@ _RECORD: Final = RequestRecord(
     latency_to_first_token_ms=120.0,
 )
 _REPORT: Final = Report(
-    instance=InstanceInfo(instance_id="i", litellm_version="1.2.3", telemetry_level=TelemetryLevel.BASIC),
+    instance=InstanceInfo(instance_id="i", litellm_version="1.2.3", groups=frozenset(TelemetryGroup)),
     window_start=10.0,
     window_end=70.0,
     requests=((RequestKey.of(_RECORD), RequestMetrics.of(_RECORD)),),
@@ -49,7 +49,12 @@ async def test_posts_the_report_as_json() -> None:
     assert request.headers["content-type"] == "application/json"
     assert json.loads(request.content) == {
         "schema_version": 1,
-        "instance": {"instance_id": "i", "litellm_version": "1.2.3", "telemetry_level": "basic", "config_keys": []},
+        "instance": {
+            "instance_id": "i",
+            "litellm_version": "1.2.3",
+            "groups": sorted(group.value for group in TelemetryGroup),
+            "config_keys": [],
+        },
         "window_start": 10.0,
         "window_end": 70.0,
         "dropped_records": 0,
@@ -61,6 +66,7 @@ async def test_posts_the_report_as_json() -> None:
                 "litellm_status": "2xx",
                 "provider_status": "2xx",
                 "litellm_cache_hit": False,
+                "rust": False,
                 "provider_cache_hit": False,
                 "stream": True,
                 "request_count": 1,

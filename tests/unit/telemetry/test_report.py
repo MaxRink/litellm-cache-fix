@@ -5,7 +5,7 @@ from litellm.telemetry.records import (
     AttemptRecord,
     InstanceInfo,
     StatusClass,
-    TelemetryLevel,
+    TelemetryGroup,
     UIAction,
     UIEvent,
 )
@@ -30,7 +30,7 @@ def test_attempt_and_ui_event_rows_serialize_with_merged_counts() -> None:
         latency_to_first_token_ms=200.0,
     )
     report: Final = Report(
-        instance=InstanceInfo(instance_id="i", litellm_version="1.0.0", telemetry_level=TelemetryLevel.FULL),
+        instance=InstanceInfo(instance_id="i", litellm_version="1.0.0", groups=frozenset(TelemetryGroup)),
         window_start=0.0,
         window_end=60.0,
         attempts=((AttemptKey.of(first), AttemptMetrics.of(first).merge(AttemptMetrics.of(second))),),

@@ -12,7 +12,7 @@ from litellm.telemetry.records import (
     InstanceInfo,
     RequestRecord,
     StatusClass,
-    TelemetryLevel,
+    TelemetryGroup,
     TokenCounts,
     UIAction,
     UIEvent,
@@ -39,7 +39,7 @@ class _Clock:
         return self.now
 
 
-_INSTANCE: Final = InstanceInfo(instance_id="i", litellm_version="1.0.0", telemetry_level=TelemetryLevel.FULL)
+_INSTANCE: Final = InstanceInfo(instance_id="i", litellm_version="1.0.0", groups=frozenset(TelemetryGroup))
 
 
 def _request(
