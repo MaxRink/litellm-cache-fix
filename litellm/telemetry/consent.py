@@ -4,7 +4,7 @@ import dataclasses
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Final
+from typing import Final, TypeAlias
 
 from litellm.telemetry.records import (
     ALLOWED_HEADER_KEYS,
@@ -59,7 +59,7 @@ class UnknownGroup:
         return f"unknown telemetry group {self.name!r}, expected one of {', '.join(g.value for g in TelemetryGroup)}"
 
 
-ConsentError = MissingRequirement | UnknownGroup
+ConsentError: TypeAlias = MissingRequirement | UnknownGroup
 
 
 def consent_of(groups: Iterable[TelemetryGroup]) -> TelemetryConsent | MissingRequirement:
