@@ -7,11 +7,20 @@ from typing_extensions import LiteralString
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient, Response
 
 from litellm.proxy._types import CommonProxyErrors, LitellmUserRoles, UserAPIKeyAuth
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
-from litellm.proxy.telemetry.endpoints import router, telemetry_store
+from litellm.proxy.telemetry.endpoints import (
+    TelemetrySettingsResponse,
+    router,
+    telemetry_runtime_dependency,
+    telemetry_store,
+)
+from litellm.proxy.telemetry.runtime import TelemetryRuntime
+from litellm.proxy.telemetry.settings import TelemetrySettings
 from litellm.proxy.telemetry.store import TelemetryStore
+from tests.unit.proxy.telemetry.fake_database import SettingsDatabase
 
 
 @dataclass
@@ -87,3 +96,106 @@ def test_the_proxy_app_serves_the_export_route_from_its_own_telemetry_runtime() 
         _ = app.dependency_overrides.pop(user_api_key_auth)
     assert response.status_code == 500, response.text
     assert response.json() == {"detail": CommonProxyErrors.db_not_connected_error.value}
+
+
+async def _settings_client(
+    role: LitellmUserRoles, settings: TelemetrySettings, db: SettingsDatabase | None
+) -> tuple[AsyncClient, TelemetryRuntime]:
+    runtime: Final = TelemetryRuntime()
+    await runtime.start(litellm_version="1.0.0", settings=settings, db=lambda: db, register=lambda _logger: None)
+    app: Final = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[user_api_key_auth] = lambda: UserAPIKeyAuth(user_role=role, user_id="admin")
+    app.dependency_overrides[telemetry_runtime_dependency] = lambda: runtime
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://proxy"), runtime
+
+
+def _settings(response: Response) -> TelemetrySettingsResponse:
+    assert response.status_code == 200, response.text
+    return TelemetrySettingsResponse.model_validate_json(response.text)
+
+
+def _enabled(response: Response) -> tuple[str, ...]:
+    return tuple(info.group.value for info in _settings(response).groups if info.enabled)
+
+
+@pytest.mark.asyncio
+async def test_an_admin_can_store_groups_and_reads_them_back_with_a_sample_report() -> None:
+    db: Final = SettingsDatabase()
+    client, runtime = await _settings_client(
+        LitellmUserRoles.PROXY_ADMIN, TelemetrySettings(flush_interval_seconds=3600), db
+    )
+    async with client:
+        saved: Final = await client.put("/telemetry/settings", json={"groups": ["heartbeat", "request_success"]})
+        read: Final = await client.get("/telemetry/settings")
+    await runtime.stop()
+    assert saved.status_code == 200, saved.text
+    assert _enabled(read) == ("heartbeat", "request_success")
+    body: Final = _settings(read)
+    assert (body.editable, body.destination, body.report_is_sample) == (True, "local_table", True)
+    assert body.report is not None and body.report["requests"]
+
+
+@pytest.mark.parametrize(
+    ("groups", "status"),
+    [(["token_info"], 400), (["heartbeat", "everything"], 400)],
+)
+@pytest.mark.asyncio
+async def test_invalid_groups_are_rejected_and_nothing_is_stored(groups: list[str], status: int) -> None:
+    db: Final = SettingsDatabase()
+    client, runtime = await _settings_client(
+        LitellmUserRoles.PROXY_ADMIN, TelemetrySettings(flush_interval_seconds=3600), db
+    )
+    async with client:
+        response: Final = await client.put("/telemetry/settings", json={"groups": groups})
+    await runtime.stop()
+    assert response.status_code == status, response.text
+    assert db.stored_groups is None
+
+
+@pytest.mark.asyncio
+async def test_unknown_fields_in_the_update_are_rejected() -> None:
+    client, runtime = await _settings_client(LitellmUserRoles.PROXY_ADMIN, TelemetrySettings(), SettingsDatabase())
+    async with client:
+        response: Final = await client.put("/telemetry/settings", json={"groups": [], "endpoint": "https://x"})
+    await runtime.stop()
+    assert response.status_code == 422, response.text
+
+
+@pytest.mark.asyncio
+async def test_a_view_only_admin_can_read_but_not_change_the_settings() -> None:
+    db: Final = SettingsDatabase()
+    client, runtime = await _settings_client(LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, TelemetrySettings(), db)
+    async with client:
+        read: Final = await client.get("/telemetry/settings")
+        write: Final = await client.put("/telemetry/settings", json={"groups": ["heartbeat"]})
+    await runtime.stop()
+    assert (read.status_code, write.status_code) == (200, 403)
+    assert db.stored_groups is None
+
+
+@pytest.mark.asyncio
+async def test_internal_users_cannot_read_the_settings() -> None:
+    client, runtime = await _settings_client(LitellmUserRoles.INTERNAL_USER, TelemetrySettings(), SettingsDatabase())
+    async with client:
+        response: Final = await client.get("/telemetry/settings")
+    await runtime.stop()
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_env_vars_lock_the_settings_and_are_listed_without_their_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LITELLM_TELEMETRY_ENDPOINT", "https://user:secret@telemetry.example")
+    db: Final = SettingsDatabase(stored_groups='{"groups": ["heartbeat"]}')
+    client, runtime = await _settings_client(LitellmUserRoles.PROXY_ADMIN, TelemetrySettings(disabled=True), db)
+    async with client:
+        read: Final = await client.get("/telemetry/settings")
+        write: Final = await client.put("/telemetry/settings", json={"groups": []})
+    await runtime.stop()
+    assert write.status_code == 409
+    body: Final = _settings(read)
+    assert (body.vetoed, body.editable, _enabled(read)) == (True, False, ())
+    assert body.environment_variables == ("LITELLM_TELEMETRY_DISABLED", "LITELLM_TELEMETRY_ENDPOINT")
+    assert "secret" not in read.text

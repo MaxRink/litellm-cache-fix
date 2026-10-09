@@ -754,7 +754,8 @@ from litellm.proxy.spend_tracking.spend_event_producer import (
 )
 from litellm.proxy.telemetry.endpoints import router as telemetry_router
 from litellm.proxy.telemetry.middleware import TelemetryMiddleware
-from litellm.proxy.telemetry.runtime import TelemetryRuntime, TelemetrySettings
+from litellm.proxy.telemetry.runtime import TelemetryRuntime
+from litellm.proxy.telemetry.settings import TelemetrySettings
 
 try:
     from litellm.proxy.enterprise_billing.billing_metrics import (

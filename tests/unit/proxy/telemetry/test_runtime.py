@@ -4,20 +4,35 @@ from typing import Final
 import pytest
 
 from litellm.proxy.telemetry.attempt_logger import TelemetryAttemptLogger
-from litellm.proxy.telemetry.runtime import TelemetryRuntime, TelemetrySettings, deployment_hasher
+from litellm.proxy.telemetry.runtime import TelemetryRuntime, deployment_hasher
+from litellm.proxy.telemetry.settings import TelemetrySettings
+from litellm.telemetry.consent import TelemetryConsent
+from litellm.telemetry.records import TelemetryGroup
+from tests.unit.proxy.telemetry.fake_database import SettingsDatabase
+
+_ENDPOINT: Final = "http://127.0.0.1:9"
+_HEARTBEAT: Final = TelemetryConsent(frozenset({TelemetryGroup.HEARTBEAT}))
+_SUCCESS: Final = TelemetryConsent(frozenset({TelemetryGroup.HEARTBEAT, TelemetryGroup.REQUEST_SUCCESS}))
+
+
+async def _started(settings: TelemetrySettings, db: SettingsDatabase | None) -> TelemetryRuntime:
+    runtime: Final = TelemetryRuntime()
+    await runtime.start(litellm_version="1.0.0", settings=settings, db=lambda: db, register=lambda _logger: None)
+    return runtime
 
 
 @pytest.mark.parametrize(
     "settings",
     [
         TelemetrySettings(),
-        TelemetrySettings(level="off", endpoint="https://telemetry.example"),
-        TelemetrySettings(level="verbose", endpoint="https://telemetry.example"),
-        TelemetrySettings(level="basic"),
+        TelemetrySettings(groups="", endpoint=_ENDPOINT),
+        TelemetrySettings(groups="heartbeat,verbose", endpoint=_ENDPOINT),
+        TelemetrySettings(groups="heartbeat"),
+        TelemetrySettings(groups="heartbeat", endpoint=_ENDPOINT, disabled=True),
     ],
 )
 @pytest.mark.asyncio
-async def test_telemetry_stays_off_unless_a_known_level_and_an_endpoint_are_both_set(
+async def test_without_a_database_telemetry_needs_valid_pinned_groups_an_endpoint_and_no_veto(
     settings: TelemetrySettings,
 ) -> None:
     registered: Final[list[TelemetryAttemptLogger]] = []  # mutable-ok: captures the register callback
@@ -28,19 +43,74 @@ async def test_telemetry_stays_off_unless_a_known_level_and_an_endpoint_are_both
 
 
 @pytest.mark.asyncio
-async def test_an_enabled_runtime_registers_the_attempt_logger_and_stops_cleanly() -> None:
+async def test_a_veto_never_opens_the_database() -> None:
+    opened: Final[list[bool]] = []  # mutable-ok: records whether the db factory ran
+
+    def _db() -> SettingsDatabase:
+        opened.append(True)
+        return SettingsDatabase(stored_groups='{"groups": ["heartbeat"]}')
+
+    runtime: Final = TelemetryRuntime()
+    await runtime.start(
+        litellm_version="1.0.0", settings=TelemetrySettings(disabled=True), db=_db, register=lambda _logger: None
+    )
+    assert (runtime.sink, runtime.store, opened) == (None, None, [])
+
+
+@pytest.mark.asyncio
+async def test_pinned_groups_register_the_attempt_logger_and_stop_cleanly() -> None:
     registered: Final[list[TelemetryAttemptLogger]] = []  # mutable-ok: captures the register callback
     runtime: Final = TelemetryRuntime()
     await runtime.start(
         litellm_version="1.0.0",
-        settings=TelemetrySettings(level="BASIC", endpoint="http://127.0.0.1:9", flush_interval_seconds=3600),
+        settings=TelemetrySettings(groups="HEARTBEAT", endpoint=_ENDPOINT, flush_interval_seconds=3600),
         db=lambda: None,
         register=registered.append,
     )
-    assert runtime.sink is not None
+    assert runtime.sink is not None and runtime.sink.consent == _HEARTBEAT
     assert len(registered) == 1
     await runtime.stop()
     assert runtime.sink is None
+
+
+@pytest.mark.asyncio
+async def test_pinned_groups_win_over_the_stored_groups() -> None:
+    db: Final = SettingsDatabase(stored_groups='{"groups": ["heartbeat", "request_success"]}')
+    runtime: Final = await _started(TelemetrySettings(groups="heartbeat", flush_interval_seconds=3600), db)
+    assert runtime.sink is not None and runtime.sink.consent == _HEARTBEAT
+    await runtime.stop()
+
+
+@pytest.mark.asyncio
+async def test_stored_groups_are_picked_up_at_the_next_window_without_a_restart() -> None:
+    db: Final = SettingsDatabase()
+    runtime: Final = await _started(TelemetrySettings(flush_interval_seconds=3600), db)
+    assert runtime.sink is None
+    db.stored_groups = '{"groups": ["heartbeat", "request_success"]}'
+    await runtime.refresh()
+    assert runtime.sink is not None and runtime.sink.consent == _SUCCESS
+    db.stored_groups = '{"groups": []}'
+    await runtime.refresh()
+    assert runtime.sink is None
+    await runtime.stop()
+
+
+@pytest.mark.asyncio
+async def test_invalid_stored_groups_are_ignored_and_telemetry_stays_off() -> None:
+    db: Final = SettingsDatabase(stored_groups='{"groups": ["token_info"]}')
+    runtime: Final = await _started(TelemetrySettings(flush_interval_seconds=3600), db)
+    assert runtime.sink is None
+    await runtime.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_failing_settings_read_keeps_the_current_groups() -> None:
+    db: Final = SettingsDatabase(stored_groups='{"groups": ["heartbeat"]}')
+    runtime: Final = await _started(TelemetrySettings(flush_interval_seconds=3600), db)
+    db.fail_reads = True
+    await runtime.refresh()
+    assert runtime.sink is not None and runtime.sink.consent == _HEARTBEAT
+    await runtime.stop()
 
 
 def test_deployment_hashes_are_stable_per_install_and_differ_across_installs() -> None:
@@ -51,12 +121,8 @@ def test_deployment_hashes_are_stable_per_install_and_differ_across_installs() -
 
 @pytest.mark.asyncio
 async def test_stop_waits_for_in_flight_request_finalizers_before_the_last_flush() -> None:
-    runtime: Final = TelemetryRuntime()
-    await runtime.start(
-        litellm_version="1.0.0",
-        settings=TelemetrySettings(level="basic", endpoint="http://127.0.0.1:9", flush_interval_seconds=3600),
-        db=lambda: None,
-        register=lambda _logger: None,
+    runtime: Final = await _started(
+        TelemetrySettings(groups="heartbeat", endpoint=_ENDPOINT, flush_interval_seconds=3600), None
     )
     finished: Final[list[bool]] = []  # mutable-ok: records that the finalizer ran to completion
 

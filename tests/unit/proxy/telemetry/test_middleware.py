@@ -82,6 +82,10 @@ async def _streamed(request: Request) -> Response:
     return StreamingResponse(chunks(), media_type="text/event-stream")
 
 
+async def _served_by_rust(request: Request) -> Response:
+    return JSONResponse({"ok": True}, headers={"x-litellm-rust": "true"})
+
+
 async def _rejected(request: Request) -> Response:
     return JSONResponse({"error": "bad key"}, status_code=401)
 
@@ -92,6 +96,7 @@ def _client(sink: _RecordingSink, spawned: _Spawned, *, settle_timeout_s: float 
             Route("/v1/chat/completions", _retried_then_served, methods=["POST"]),
             Route("/v1/messages", _streamed, methods=["POST"]),
             Route("/v1/embeddings", _rejected, methods=["POST"]),
+            Route("/v1/responses", _served_by_rust, methods=["POST"]),
             Route("/health", _rejected, methods=["GET"]),
         ]
     )
@@ -160,3 +165,18 @@ async def test_routes_outside_llm_mcp_and_a2a_are_not_recorded() -> None:
         await client.get("/health")
     assert spawned.coroutines == ()
     assert sink.requests == ()
+
+
+@pytest.mark.asyncio
+async def test_only_a_response_carrying_the_rust_header_counts_as_handled_by_rust() -> None:
+    sink: Final = _RecordingSink()
+    spawned: Final = _Spawned()
+    async with _client(sink, spawned) as client:
+        rust_response: Final = await client.post("/v1/responses", json={})
+        python_response: Final = await client.post("/v1/messages", json={})
+    assert (rust_response.status_code, python_response.status_code) == (200, 200)
+    await spawned.drain()
+    assert [(record.endpoint, record.rust) for record in sink.requests] == [
+        ("/responses", True),
+        ("/v1/messages", False),
+    ]

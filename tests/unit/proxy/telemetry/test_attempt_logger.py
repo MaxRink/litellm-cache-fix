@@ -55,7 +55,7 @@ def _payload(error_information: Mapping[str, object] | None = None) -> Mapping[s
 @pytest.mark.asyncio
 async def test_a_logged_stream_success_becomes_an_attempt_and_joins_the_in_flight_request() -> None:
     sink: Final = _RecordingSink()
-    logger: Final = TelemetryAttemptLogger(sink, hash_deployment=lambda model_id: f"h({model_id})")
+    logger: Final = TelemetryAttemptLogger(lambda: sink, hash_deployment=lambda model_id: f"h({model_id})")
     request: Final = RequestAccumulator()
     token: Final = current_request.set(request)
     try:
@@ -95,7 +95,7 @@ async def test_a_logged_failure_carries_the_provider_status_class(
     error_information: Mapping[str, object] | None, expected_status: StatusClass
 ) -> None:
     sink: Final = _RecordingSink()
-    logger: Final = TelemetryAttemptLogger(sink, hash_deployment=lambda model_id: model_id)
+    logger: Final = TelemetryAttemptLogger(lambda: sink, hash_deployment=lambda model_id: model_id)
     await logger.async_log_failure_event({"standard_logging_object": _payload(error_information)}, None, None, None)
     (attempt,) = sink.attempts
     assert attempt.provider_status is expected_status
@@ -105,7 +105,7 @@ async def test_a_logged_failure_carries_the_provider_status_class(
 @pytest.mark.asyncio
 async def test_a_call_without_a_standard_logging_payload_is_skipped() -> None:
     sink: Final = _RecordingSink()
-    await TelemetryAttemptLogger(sink, hash_deployment=lambda model_id: model_id).async_log_success_event(
+    await TelemetryAttemptLogger(lambda: sink, hash_deployment=lambda model_id: model_id).async_log_success_event(
         {}, None, None, None
     )
     assert sink.attempts == ()
@@ -117,7 +117,7 @@ async def test_a_proxy_side_reject_that_never_reached_a_provider_is_not_an_attem
     request: Final = RequestAccumulator()
     token: Final = current_request.set(request)
     try:
-        await TelemetryAttemptLogger(sink, hash_deployment=lambda model_id: model_id).async_log_failure_event(
+        await TelemetryAttemptLogger(lambda: sink, hash_deployment=lambda model_id: model_id).async_log_failure_event(
             {
                 "standard_logging_object": _payload({"error_code": "401"}),
                 "litellm_params": {"proxy_rejected_before_routing": True},

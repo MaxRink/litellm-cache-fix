@@ -12,7 +12,7 @@ from litellm.telemetry.records import (
     InstanceInfo,
     RequestRecord,
     StatusClass,
-    TelemetryLevel,
+    TelemetryGroup,
     TokenCounts,
     UIAction,
     UIEvent,
@@ -39,6 +39,7 @@ class RequestKey:
     litellm_status: StatusClass
     provider_status: StatusClass
     litellm_cache_hit: bool
+    rust: bool
     provider_cache_hit: bool
     stream: bool
 
@@ -51,6 +52,7 @@ class RequestKey:
             litellm_status=record.litellm_status,
             provider_status=record.provider_status,
             litellm_cache_hit=record.litellm_cache_hit,
+            rust=record.rust,
             provider_cache_hit=record.provider_cache_hit,
             stream=record.stream,
         )
@@ -152,7 +154,7 @@ class Report:
     schema_version: int = REPORT_SCHEMA_VERSION
 
 
-def _enum_value(value: StatusClass | BlockType | UIAction | TelemetryLevel) -> str:
+def _enum_value(value: StatusClass | BlockType | UIAction | TelemetryGroup) -> str:
     return value.value
 
 
@@ -160,28 +162,38 @@ def _histogram_json(histogram: Histogram) -> JsonValue:
     return {"bounds": list(histogram.bounds), "counts": list(histogram.counts)}
 
 
-def _request_json(key: RequestKey, metrics: RequestMetrics) -> JsonValue:
-    return {
+def _request_json(key: RequestKey, metrics: RequestMetrics, groups: frozenset[TelemetryGroup]) -> JsonValue:
+    success: Final[Mapping[str, JsonValue]] = {
         "endpoint": key.endpoint,
-        "provider": key.provider,
-        "deployment_hash": key.deployment_hash,
         "litellm_status": _enum_value(key.litellm_status),
         "provider_status": _enum_value(key.provider_status),
         "litellm_cache_hit": key.litellm_cache_hit,
-        "provider_cache_hit": key.provider_cache_hit,
+        "rust": key.rust,
         "stream": key.stream,
         "request_count": metrics.request_count,
-        "input_tokens": metrics.tokens.input,
-        "output_tokens": metrics.tokens.output,
-        "cache_read_tokens": metrics.tokens.cache_read,
-        "cache_write_tokens": metrics.tokens.cache_write,
-        "block_count": _histogram_json(metrics.block_count),
-        "block_types": {_enum_value(block_type): n for block_type, n in metrics.block_types},
-        "header_keys": dict(metrics.header_keys),
         "provider_attempts": _histogram_json(metrics.provider_attempts),
         "latency_total_ms": _histogram_json(metrics.latency_total),
         "latency_to_headers_ms": _histogram_json(metrics.latency_to_headers),
         "latency_to_first_token_ms": _histogram_json(metrics.latency_to_first_token),
+    }
+    tokens: Final[Mapping[str, JsonValue]] = {
+        "provider_cache_hit": key.provider_cache_hit,
+        "input_tokens": metrics.tokens.input,
+        "output_tokens": metrics.tokens.output,
+        "cache_read_tokens": metrics.tokens.cache_read,
+        "cache_write_tokens": metrics.tokens.cache_write,
+    }
+    taxonomy: Final[Mapping[str, JsonValue]] = {"provider": key.provider, "deployment_hash": key.deployment_hash}
+    details: Final[Mapping[str, JsonValue]] = {
+        "block_count": _histogram_json(metrics.block_count),
+        "block_types": {_enum_value(block_type): n for block_type, n in metrics.block_types},
+        "header_keys": dict(metrics.header_keys),
+    }
+    return {
+        **success,
+        **(tokens if TelemetryGroup.TOKEN_INFO in groups else {}),
+        **(taxonomy if TelemetryGroup.REQUEST_TAXONOMY in groups else {}),
+        **(details if TelemetryGroup.EVENT_DETAILS in groups else {}),
     }
 
 
@@ -201,19 +213,35 @@ def _ui_event_json(event: UIEvent, count: int) -> JsonValue:
     return {"page": event.page, "action": _enum_value(event.action), "target": event.target, "count": count}
 
 
+def _instance_json(instance: InstanceInfo) -> JsonValue:
+    configuration: Final[Mapping[str, JsonValue]] = {"config_keys": sorted(instance.config_keys)}
+    return {
+        "instance_id": instance.instance_id,
+        "litellm_version": instance.litellm_version,
+        "groups": sorted(_enum_value(group) for group in instance.groups),
+        **(configuration if TelemetryGroup.INSTANCE_CONFIGURATION in instance.groups else {}),
+    }
+
+
 def report_to_json(report: Report) -> Mapping[str, JsonValue]:
+    """Only the fields of the report's enabled groups, so a stored or sent report shows exactly what was collected"""
+    groups: Final = report.instance.groups
+    requests: Final[Mapping[str, JsonValue]] = {
+        "requests": [_request_json(key, metrics, groups) for key, metrics in report.requests]
+    }
+    attempts: Final[Mapping[str, JsonValue]] = {
+        "attempts": [_attempt_json(key, metrics) for key, metrics in report.attempts]
+    }
+    ui_events: Final[Mapping[str, JsonValue]] = {
+        "ui_events": [_ui_event_json(event, count) for event, count in report.ui_events]
+    }
     return {
         "schema_version": report.schema_version,
-        "instance": {
-            "instance_id": report.instance.instance_id,
-            "litellm_version": report.instance.litellm_version,
-            "telemetry_level": _enum_value(report.instance.telemetry_level),
-            "config_keys": sorted(report.instance.config_keys),
-        },
+        "instance": _instance_json(report.instance),
         "window_start": report.window_start,
         "window_end": report.window_end,
         "dropped_records": report.dropped_records,
-        "requests": [_request_json(key, metrics) for key, metrics in report.requests],
-        "attempts": [_attempt_json(key, metrics) for key, metrics in report.attempts],
-        "ui_events": [_ui_event_json(event, count) for event, count in report.ui_events],
+        **(requests if TelemetryGroup.REQUEST_SUCCESS in groups else {}),
+        **(attempts if TelemetryGroup.REQUEST_TAXONOMY in groups else {}),
+        **(ui_events if TelemetryGroup.PAGE_NAVIGATION in groups else {}),
     }

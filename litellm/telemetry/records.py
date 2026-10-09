@@ -10,15 +10,16 @@ from enum import Enum
 from typing import Final
 
 
-class TelemetryLevel(str, Enum):
-    OFF = "off"
-    BASIC = "basic"
-    FULL = "full"
+class TelemetryGroup(str, Enum):
+    """One switch in the telemetry settings; ``litellm.telemetry.consent.REQUIRES`` orders them"""
 
-    @classmethod
-    def parse(cls, value: str | None) -> "TelemetryLevel | None":
-        normalized: Final = (value or cls.OFF.value).strip().lower()
-        return next((level for level in cls if level.value == normalized), None)
+    HEARTBEAT = "heartbeat"
+    REQUEST_SUCCESS = "request_success"
+    TOKEN_INFO = "token_info"
+    REQUEST_TAXONOMY = "request_taxonomy"
+    EVENT_DETAILS = "event_details"
+    INSTANCE_CONFIGURATION = "instance_configuration"
+    PAGE_NAVIGATION = "page_navigation"
 
 
 class StatusClass(str, Enum):
@@ -98,7 +99,7 @@ class BlockCounts:
 class InstanceInfo:
     instance_id: str
     litellm_version: str
-    telemetry_level: TelemetryLevel
+    groups: frozenset[TelemetryGroup] = frozenset()
     config_keys: frozenset[str] = frozenset()
 
 
@@ -112,6 +113,7 @@ class RequestRecord:
     deployment_hash: str | None = None
     provider_status: StatusClass = StatusClass.NONE
     litellm_cache_hit: bool = False
+    rust: bool = False
     provider_cache_hit: bool = False
     provider_attempts: int = 0
     tokens: TokenCounts = field(default_factory=TokenCounts)
