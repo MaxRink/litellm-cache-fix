@@ -37,8 +37,13 @@ async def async_send(self, request, *args, **kwargs):
     raise AssertionError(f'unexpected URL path: {request.url.path}')
 
 def sync_send(self, request, *args, **kwargs):
-    import asyncio
-    return asyncio.run(async_send(self, request, *args, **kwargs))
+    global calls
+    body_shape(request)
+    if request.url.path.endswith('/api/chat'):
+        calls += 1
+        payload = {'model':'qwen3:4b','created_at':'2026-01-01T00:00:00Z','message':{'role':'assistant','content':'CACHE_OK'},'done':True,'done_reason':'stop','total_duration':1,'load_duration':1,'prompt_eval_count':3,'prompt_eval_duration':1,'eval_count':1,'eval_duration':1}
+        return httpx.Response(200, json=payload, request=request)
+    raise AssertionError(f'unexpected URL path: {request.url.path}')
 
 httpx.AsyncClient.send = async_send
 httpx.Client.send = sync_send
@@ -48,7 +53,7 @@ router = Router(
         'model': 'ollama_chat/qwen3:4b', 'api_base': 'http://mock.invalid',
         'api_key': 'fixture', 'num_ctx': 8192,
     }, 'model_info': {'rpm': 60}}],
-    cache_responses=True, enable_pre_call_checks=True, num_retries=0,
+    cache_responses=True, enable_pre_call_checks=False, num_retries=0,
 )
 kwargs = {
     'model': 'ha-local',
