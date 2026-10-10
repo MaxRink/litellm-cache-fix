@@ -1,5 +1,5 @@
---- /private/tmp/d544-base/base-d544-1227bd.caching.py	2026-10-10 06:31:33
-+++ /private/tmp/diag-overlay/caching.py	2026-10-10 06:25:31
+--- /private/tmp/litellm-overlay-work/docker/litellm-cache-key-diagnostic/base-d544-1227bd.caching.py	2026-10-10 06:32:18
++++ /private/tmp/litellm-overlay-work/docker/litellm-cache-key-diagnostic/caching.py	2026-10-10 06:36:20
 @@ -11,6 +11,7 @@
  import hashlib
  import json
@@ -11,13 +11,13 @@
 @@ -39,6 +40,8 @@
  from .redis_semantic_cache import RedisSemanticCache
  from .s3_cache import S3Cache
- 
+
 +_cache_key_diagnostic_calls: dict[str, tuple[float, int]] = {}
 +
  if TYPE_CHECKING:
      from litellm.rust_bridge.response_cache import NativeCacheRequest, ResponseCacheRuntime
- 
-@@ -357,7 +360,84 @@
+
+@@ -357,6 +360,86 @@
              for field in self._semantic_cache_scope_fields()
          )
          return "".join(f"{field}: {value}" for field, value in scope_values if value is not None)
@@ -34,7 +34,7 @@
 +        if isinstance(value, (list, tuple)):
 +            return [Cache._redact_cache_diagnostic_value(v) for v in value]
 +        return value
- 
++
 +    @staticmethod
 +    def _emit_cache_key_diagnostic(*, cache_key: str, kwargs: Mapping[str, object]) -> None:
 +        """Emit gated, hash-only traces correlated to one approved request."""
@@ -45,7 +45,7 @@
 +        _cache_key_diagnostic_calls = {
 +            call_hash: (expires, remaining)
 +            for call_hash, (expires, remaining) in _cache_key_diagnostic_calls.items()
-+            if expires > now and remaining > 0
++            if expires > now
 +        }
 +        call_id = kwargs.get("litellm_call_id")
 +        if not isinstance(call_id, str) or not call_id:
@@ -67,10 +67,12 @@
 +            and alias == "paperless-gpt"
 +            and messages_hash == "10ee9c833aa5c34b"
 +        )
-+        if not exact_canary and active is None:
-+            return
-+        if exact_canary:
++        if active is None:
++            if not exact_canary:
++                return
 +            _cache_key_diagnostic_calls[call_hash] = (now + 60.0, 2)
++        elif active[1] <= 0:
++            return
 +        else:
 +            _cache_key_diagnostic_calls[call_hash] = (active[0], active[1] - 1)
 +        allowed = {
@@ -91,6 +93,7 @@
 +            selected[name] = hashlib.sha256(encoded).hexdigest()[:16]
 +        payload = {
 +            "event": "cache_key_diagnostic",
++            "call_hash": call_hash,
 +            "scope": "paperless-gpt-ha-local-canary",
 +            "field_names": list(selected),
 +            "selected_hashes": selected,
@@ -98,11 +101,10 @@
 +            "cache_key_hash": hashlib.sha256(cache_key.encode()).hexdigest()[:16],
 +        }
 +        verbose_logger.info("%s", json.dumps(payload, sort_keys=True, separators=(",", ":")))
-+
+
      def get_cache_key(self, **kwargs) -> str:
          """
-         Get the cache key for the given arguments.
-@@ -404,6 +484,7 @@
+@@ -404,6 +487,7 @@
              hashed_cache_key,
              len(cache_key),
          )

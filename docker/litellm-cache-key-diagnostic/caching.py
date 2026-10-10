@@ -384,7 +384,7 @@ class Cache:
         _cache_key_diagnostic_calls = {
             call_hash: (expires, remaining)
             for call_hash, (expires, remaining) in _cache_key_diagnostic_calls.items()
-            if expires > now and remaining > 0
+            if expires > now
         }
         call_id = kwargs.get("litellm_call_id")
         if not isinstance(call_id, str) or not call_id:
@@ -406,10 +406,12 @@ class Cache:
             and alias == "paperless-gpt"
             and messages_hash == "10ee9c833aa5c34b"
         )
-        if not exact_canary and active is None:
-            return
-        if exact_canary:
+        if active is None:
+            if not exact_canary:
+                return
             _cache_key_diagnostic_calls[call_hash] = (now + 60.0, 2)
+        elif active[1] <= 0:
+            return
         else:
             _cache_key_diagnostic_calls[call_hash] = (active[0], active[1] - 1)
         allowed = {
@@ -430,6 +432,7 @@ class Cache:
             selected[name] = hashlib.sha256(encoded).hexdigest()[:16]
         payload = {
             "event": "cache_key_diagnostic",
+            "call_hash": call_hash,
             "scope": "paperless-gpt-ha-local-canary",
             "field_names": list(selected),
             "selected_hashes": selected,

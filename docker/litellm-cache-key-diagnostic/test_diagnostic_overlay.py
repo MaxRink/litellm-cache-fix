@@ -5,6 +5,7 @@ import ast
 import hashlib
 import json
 import os
+import re
 from collections.abc import Mapping
 from pathlib import Path
 from types import SimpleNamespace
@@ -46,6 +47,57 @@ def test_disabled_and_wrong_scope_are_silent(monkeypatch):
     monkeypatch.setenv("LITELLM_CACHE_KEY_DIAGNOSTIC", "1")
     cache._emit_cache_key_diagnostic(cache_key="k", kwargs=kwargs)
     assert records == []
+
+
+def test_same_call_followup_is_bounded_and_other_call_is_silent(monkeypatch):
+    cache, namespace = _load_helpers()
+    records = []
+    namespace["verbose_logger"].info = lambda *args: records.append(args)
+    messages = [{"role": "user", "content": "diagnostic fixture"}]
+    encoded_messages = json.dumps(messages, sort_keys=True, separators=(",", ":"), default=str).encode()
+    real_sha256 = hashlib.sha256
+
+    class Digest:
+        def __init__(self, value):
+            self.value = value
+
+        def hexdigest(self):
+            return self.value
+
+    def sha256(value=b""):
+        if value == encoded_messages:
+            return Digest("10ee9c833aa5c34b" + "0" * 48)
+        return real_sha256(value)
+
+    namespace["hashlib"].sha256 = sha256
+    monkeypatch.setenv("LITELLM_CACHE_KEY_DIAGNOSTIC", "1")
+    first = {
+        "litellm_call_id": "call-accepted",
+        "metadata": {"model_group": "ha-local", "user_api_key_alias": "paperless-gpt"},
+        "messages": messages,
+        "model": "ha-local",
+    }
+    cache._emit_cache_key_diagnostic(cache_key="first", kwargs=first)
+    followup = dict(first)
+    followup["model"] = "ha-local-mutated-by-provider"
+    cache._emit_cache_key_diagnostic(cache_key="second", kwargs=followup)
+    other = dict(followup)
+    other["litellm_call_id"] = "call-other"
+    other["metadata"] = {"model_group": "ha-local", "user_api_key_alias": "unapproved"}
+    cache._emit_cache_key_diagnostic(cache_key="third", kwargs=other)
+    for i in range(3):
+        cache._emit_cache_key_diagnostic(cache_key=f"followup-{i}", kwargs=followup)
+    assert len(records) == 3
+    assert all("call_hash" in json.loads(args[1]) for args in records)
+    assert all("call-accepted" not in json.dumps(args) for args in records)
+    assert all("diagnostic fixture" not in json.dumps(args) for args in records)
+
+
+def test_wrong_base_hash_is_rejected():
+    base = SOURCE.with_name("base-d544-1227bd.caching.py")
+    expected = "1227bd9292d28462e9db12946238dcc2f5caf20cd40ba9ebd504d27fa25c96e0"
+    assert hashlib.sha256(base.read_bytes()).hexdigest() == expected
+    assert hashlib.sha256((base.read_bytes() + b"\n")).hexdigest() != expected
 
 
 def test_redaction_drops_sensitive_fields_and_keeps_no_raw_values():
