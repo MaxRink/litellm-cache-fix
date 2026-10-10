@@ -106,6 +106,19 @@ for root in sys.path:
         for lineno, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
             if ".set_attribute(" in line:
                 print(f"OTEL_SET_ATTRIBUTE_SOURCE {path}:{lineno}")
+
+for root in sys.path:
+    path = Path(root) / "opentelemetry/instrumentation/asgi/__init__.py"
+    if path.exists():
+        text = path.read_text()
+        for expression, replacement in (
+            ("                    receive_span.set_attribute(\n", "                    print(\"ASGI_SET_ATTRIBUTE_RECEIVE\", file=sys.stderr)\n                    receive_span.set_attribute(\n"),
+            ("                send_span.set_attribute(\"asgi.event.type\", message[\"type\"])\n", "                print(\"ASGI_SET_ATTRIBUTE_SEND\", file=sys.stderr)\n                send_span.set_attribute(\"asgi.event.type\", message[\"type\"])\n"),
+            ("                        current_span.set_attribute(key, value)\n", "                        print(\"ASGI_SET_ATTRIBUTE_SERVER\", file=sys.stderr)\n                        current_span.set_attribute(key, value)\n"),
+        ):
+            text = text.replace(expression, replacement, 1)
+        path.write_text(text)
+        break
 PY
 DOCKERFILE
 docker build --build-arg BASE_IMAGE="$base_image" -t otel-qa-guarded "$workdir" >/dev/null
