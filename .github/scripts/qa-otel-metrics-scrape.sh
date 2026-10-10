@@ -74,6 +74,22 @@ for root in sys.path:
         break
 else:
     raise SystemExit("installed LiteLLM source not found")
+
+# Diagnostic-only overlay: retain the original SDK behavior while recording
+# the sanitized caller stack for ended-span writes. No attribute keys/values
+# or request data are emitted.
+for root in sys.path:
+    path = Path(root) / "opentelemetry/sdk/trace/__init__.py"
+    if path.exists():
+        text = path.read_text()
+        needle = "    def set_attribute(self, key: str, value: types.AttributeValue) -> None:\n"
+        replacement = needle + "        if not self.is_recording():\n            import sys, traceback\n            print('ENDED_SPAN_CALLSITE\\n' + ''.join(traceback.format_stack(limit=12)), file=sys.stderr)\n"
+        if needle not in text:
+            raise SystemExit(f"SDK set_attribute insertion point not found: {path}")
+        path.write_text(text.replace(needle, replacement, 1))
+        break
+else:
+    raise SystemExit("installed OpenTelemetry SDK source not found")
 PY
 DOCKERFILE
 docker build --build-arg BASE_IMAGE="$base_image" -t otel-qa-guarded "$workdir" >/dev/null
