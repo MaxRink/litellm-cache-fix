@@ -37,6 +37,8 @@ run_case() {
     sleep 1
   done
   docker exec "$name" python -c 'import hashlib, importlib.util; s=importlib.util.find_spec("litellm.integrations.opentelemetry"); p=s.origin; print(f"runtime_otel_path={p}"); print(f"runtime_otel_sha256={hashlib.sha256(open(p,"rb").read()).hexdigest()}")' >&2
+  docker exec "$name" python -c 'import urllib.request, json; req=urllib.request.Request("http://127.0.0.1:4000/v1/chat/completions", data=json.dumps({"model":"qa-unused","messages":[{"role":"user","content":"qa"}]}).encode(), headers={"Authorization":"Bearer qa-master","Content-Type":"application/json"}); urllib.request.urlopen(req, timeout=3)' >/dev/null 2>&1 || true
+  docker exec "$name" python -c 'from opentelemetry.sdk.trace import TracerProvider; from litellm.integrations.opentelemetry import OpenTelemetry; p=TracerProvider(); s=p.get_tracer("qa").start_span("team"); o=OpenTelemetry(tracer_provider=p); o.safe_set_attribute(s, "team.id", "qa-team"); assert s.attributes.get("team.id") == "qa-team"; s.end(); print("team_attribute_preserved=true")' >&2
   if ! docker exec "$name" python -c 'import urllib.request; req=urllib.request.Request("http://127.0.0.1:4000/metrics/", headers={"Authorization":"Bearer qa-master"}); r=urllib.request.urlopen(req, timeout=5); body=r.read(); assert r.status == 200 and body, r.status' \
     >"$workdir/$name.metrics"; then
     echo "metrics_scrape_failed=$name" >&2
@@ -48,6 +50,13 @@ run_case() {
   local warning_count
   warning_count=$(grep -c "Setting attribute on ended span" "$workdir/$name.log" || true)
   awk '/^# (HELP|TYPE) /{print}' "$workdir/$name.metrics" | sort -u | sha256sum | awk -v n="$name" '{print "metric_metadata_sha256[" n "]=" $1}' >&2
+  local sample_count
+  sample_count=$(grep -E '^litellm_[a-zA-Z0-9_:]+([ {]|$)' "$workdir/$name.metrics" | wc -l | tr -d ' ')
+  if [[ "$sample_count" -eq 0 ]]; then
+    echo "metric_sample_count_zero=$name" >&2
+    return 1
+  fi
+  echo "metric_sample_count[$name]=$sample_count" >&2
   docker rm -f "$name" >/dev/null 2>&1 || true
   printf '%s\n' "$warning_count"
 }
