@@ -525,7 +525,7 @@ jobs:
           PYTHONPATH: tests/e2e
         run: |
           export LITELLM_MASTER_KEY="sk-$(openssl rand -hex 16)"
-          uvx --from pytest==9.0.3 --with pyyaml==6.0.3 --with pydantic==2.13.4 --with requests==2.34.0 --with python-dotenv==1.2.2 --with botocore==1.43.6 pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_e2e_metadata.py tests/code_coverage_tests/test_e2e_junit_report.py
+          uvx --from pytest==9.0.3 --with pyyaml==6.0.3 --with pydantic==2.13.4 --with requests==2.34.0 --with python-dotenv==1.2.2 --with botocore==1.43.6 --with anthropic==0.84.0 --with pytest-rerunfailures==15.1 pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_e2e_metadata.py tests/code_coverage_tests/test_e2e_junit_report.py
 
       - name: Check merge smoke harness
         run: uvx --from pytest==9.0.3 --with pyyaml==6.0.3 --with pydantic==2.13.4 pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_merge_smoke.py
