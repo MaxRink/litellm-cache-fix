@@ -856,7 +856,7 @@ class LLMCachingHandler:
             cache_hit=cache_hit,
         )
 
-    async def _retrieve_from_cache(  # noqa: C901  # retrieval handles cache modes and caller isolation
+    async def _retrieve_from_cache(
         self, call_type: str, kwargs: dict[str, object], args: tuple[object, ...]
     ) -> object | None:
         """
@@ -898,28 +898,7 @@ class LLMCachingHandler:
             _set_cache_key_if_available(new_kwargs, derived_cache_key)
         cached_result: object | None = None
         if call_type == CallTypes.aembedding.value:
-            new_kwargs["input"] = self.handle_kwargs_input_list_or_str(new_kwargs)
-            tasks: Final[list[Awaitable[object]]] = []
-            for idx, i in enumerate(new_kwargs["input"]):
-                preset_cache_key = litellm.cache.get_cache_key(
-                    **cast(dict[str, object], {**new_kwargs, "input": i})  # cast-ok: embedding kwargs are string keyed
-                )
-                if preset_cache_key is None:
-                    return None
-                tasks.append(
-                    litellm.cache.async_get_cache(
-                        cache_key=preset_cache_key,
-                        dynamic_cache_object=self.dual_cache,
-                    )
-                )
-            with response_cache_phase("get"):
-                entries: Final = await asyncio.gather(*tasks)
-            cached_result = [_current_format_embedding_entry(entry) for entry in entries]
-            ## check if cached result is None ##
-            if isinstance(cached_result, list):
-                # set cached_result to None if all elements are None
-                if all(result is None for result in cached_result):
-                    cached_result = None
+            cached_result = await self._retrieve_embedding_cache(new_kwargs)
         else:
             request_kwargs: Final = new_kwargs.copy()
             request_cache_key: Final = _request_cache_key(request_kwargs)
@@ -940,7 +919,7 @@ class LLMCachingHandler:
             else:  # fallback for caches that don't support async
                 self.preset_cache_key = request_cache_key or derived_cache_key
                 with response_cache_phase("get"):
-                    cached_result = litellm.cache.get_cache(
+                    cached_result = litellm.cache.get_cache(  # rebind-ok: sync fallback assigns the cache response
                         dynamic_cache_object=self.dual_cache,
                         cache_key=self.preset_cache_key,
                         **request_kwargs,
@@ -948,6 +927,33 @@ class LLMCachingHandler:
         if is_response_without_output(cached_result):
             verbose_logger.debug("LiteLLM Cache: cached response has no output, treating it as a miss")
             self._forget_worker_copy()
+            return None
+        return cached_result
+
+    async def _retrieve_embedding_cache(
+        self,
+        request_kwargs: dict[str, object],  # mutable-ok: helper normalizes embedding inputs in place
+    ) -> object | None:
+        request_kwargs["input"] = self.handle_kwargs_input_list_or_str(
+            request_kwargs
+        )  # rebind-ok: normalize embedding inputs
+        tasks: Final[list[Awaitable[object]]] = []  # mutable-ok: collect concurrent cache reads
+        for input_value in request_kwargs["input"]:
+            preset_cache_key = litellm.cache.get_cache_key(
+                **cast(dict[str, object], {**request_kwargs, "input": input_value})  # cast-ok: dynamic cache kwargs
+            )
+            if preset_cache_key is None:
+                return None
+            tasks.append(
+                litellm.cache.async_get_cache(
+                    cache_key=preset_cache_key,
+                    dynamic_cache_object=self.dual_cache,
+                )
+            )
+        with response_cache_phase("get"):
+            entries: Final = await asyncio.gather(*tasks)
+        cached_result: Final = [_current_format_embedding_entry(entry) for entry in entries]
+        if isinstance(cached_result, list) and all(result is None for result in cached_result):
             return None
         return cached_result
 
