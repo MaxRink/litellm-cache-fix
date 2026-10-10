@@ -172,6 +172,10 @@ async def main() -> None:
         statuses.append(await _request("caller-a", "tenant-a", client, cache_key=explicit_key))
         same_caller_reused = provider_calls == calls_after_a_first
 
+        calls_before_b_same_key = provider_calls
+        statuses.append(await _request("caller-b", "tenant-b", client, cache_key=explicit_key))
+        caller_b_same_explicit_isolated = provider_calls == calls_before_b_same_key + 1
+
         calls_before_b = provider_calls
         statuses.append(await _request("caller-b", "tenant-b", client, cache_key=first_store))
         caller_b_spoof_isolated = provider_calls == calls_before_b + 1
@@ -213,6 +217,7 @@ async def main() -> None:
     success = (
         all(status == 200 for status in statuses)
         and same_caller_reused
+        and caller_b_same_explicit_isolated
         and caller_b_spoof_isolated
         and preset_spoof_isolated
         and no_cache_called_provider
@@ -230,6 +235,7 @@ async def main() -> None:
                 "generated_a_reused": generated_a_reused,
                 "generated_b_reused": generated_b_reused,
                 "same_caller_reused": same_caller_reused,
+                "caller_b_same_explicit_isolated": caller_b_same_explicit_isolated,
                 "caller_b_spoof_isolated": caller_b_spoof_isolated,
                 "preset_spoof_isolated": preset_spoof_isolated,
                 "no_cache_called_provider": no_cache_called_provider,
