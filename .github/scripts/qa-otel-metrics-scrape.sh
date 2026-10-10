@@ -200,6 +200,9 @@ for root in sys.path:
     path = Path(root) / "litellm/integrations/opentelemetry.py"
     if path.exists():
         text = path.read_text()
+        import hashlib
+        if hashlib.sha256(path.read_bytes()).hexdigest() != "a0b304266e1d9a516e29a24e47ad340385525abd064ef3cda12e17a84121703d":
+            raise SystemExit(f"unexpected base OTEL source: {path}")
         if needle not in text:
             raise SystemExit(f"guard insertion point not found: {path}")
         path.write_text(text.replace(needle, replacement, 1))
@@ -211,6 +214,9 @@ for root in sys.path:
     path = Path(root) / "litellm/integrations/otel/logger.py"
     if path.exists():
         text = path.read_text()
+        import hashlib
+        if hashlib.sha256(path.read_bytes()).hexdigest() != "53ea87fd204b58e2f75fbb3175e17538676a55b1edf3114241b57d9b02b356c8":
+            raise SystemExit(f"unexpected base OTEL logger source: {path}")
         needle = "                    for key, value in bag.items():\n                        server_span.set_attribute(key, value)"
         replacement = "                    for key, value in bag.items():\n                        if is_recordable_span(server_span) and server_span.is_recording():\n                            server_span.set_attribute(key, value)"
         if needle not in text:
