@@ -6,6 +6,9 @@ from typing import Final, Literal
 
 from litellm.litellm_core_utils.env_utils import get_env_int, get_env_int_in_range, get_env_int_or_none
 
+# Replies depend on the caller's delegated identity, which response-cache keys do not include.
+RESPONSE_CACHE_EXCLUDED_PROVIDERS: Final = frozenset({"microsoft_365_copilot"})
+
 SERVER_STREAMING_CLASSIFICATION_KEY: Final = "litellm_server_streaming_classification"
 
 
