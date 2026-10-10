@@ -19,4 +19,4 @@ jobs:
           context: .
           file: Dockerfile.homelab-combined
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/litellm-otel-cache-fix:f5a0a0d-guard1433
+          tags: ghcr.io/maxrink/litellm-otel-cache-fix:f5a0a0d-guard1433
