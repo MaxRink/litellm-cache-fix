@@ -81,7 +81,11 @@ text = generate_latest(REGISTRY).decode()
 samples = [line for line in text.splitlines() if line.startswith("litellm_")]
 assert samples, "production Prometheus callback emitted no litellm samples"
 metadata_lines = sorted(line for line in text.splitlines() if line.startswith("# HELP ") or line.startswith("# TYPE "))
-stable_samples = sorted(line for line in samples if line.startswith("litellm_proxy_total_requests_metric") or line.startswith("litellm_requests_metric"))
+stable_samples = sorted(
+    line for line in samples
+    if (line.startswith("litellm_proxy_total_requests_metric") or line.startswith("litellm_requests_metric"))
+    and "_created{" not in line
+)
 assert stable_samples, "production Prometheus callback emitted no stable request counter"
 print(f"fixture_metric_sample_count={len(samples)}")
 print(f"fixture_metric_metadata_sha256={hashlib.sha256(('\\n'.join(metadata_lines)).encode()).hexdigest()}")
