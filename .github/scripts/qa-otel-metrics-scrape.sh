@@ -86,6 +86,8 @@ assert stable_samples, "production Prometheus callback emitted no stable request
 print(f"fixture_metric_sample_count={len(samples)}")
 print(f"fixture_metric_metadata_sha256={hashlib.sha256(('\\n'.join(metadata_lines)).encode()).hexdigest()}")
 print(f"fixture_counter_values_sha256={hashlib.sha256(('\\n'.join(stable_samples)).encode()).hexdigest()}")
+for line in stable_samples:
+    print(f"fixture_counter_sample={line}")
 print("fixture_team_metadata=true")
 PY
 
