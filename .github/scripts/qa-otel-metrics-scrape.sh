@@ -39,6 +39,51 @@ class Handler(BaseHTTPRequestHandler):
 HTTPServer(("127.0.0.1", 18080), Handler).serve_forever()
 PY
 
+cat >"$workdir/prom_fixture.py" <<'PY'
+import asyncio
+import hashlib
+from prometheus_client import REGISTRY, generate_latest
+import litellm
+from litellm.integrations.prometheus import PrometheusLogger
+
+metadata = {
+    "user_api_key_user_id": "qa-user",
+    "user_api_key_hash": "qa-key-hash",
+    "user_api_key_alias": "qa-alias",
+    "user_api_key_team_id": "qa-team",
+    "user_api_key_team_alias": "qa-team-alias",
+    "user_api_key_user_email": "qa@example.invalid",
+    "requester_ip_address": "127.0.0.1",
+    "user_api_key_org_id": None,
+    "user_api_key_org_alias": None,
+    "user_api_key_request_route": "/v1/chat/completions",
+}
+payload = {
+    "metadata": metadata,
+    "completion_tokens": 1,
+    "prompt_tokens": 1,
+    "total_tokens": 2,
+    "response_cost": 0.0,
+    "request_tags": [],
+    "model_group": "qa-unused",
+    "model_id": "qa-deployment",
+    "api_base": "http://127.0.0.1:18080/v1",
+    "custom_llm_provider": "openai",
+    "stream": False,
+    "hidden_params": {"additional_headers": {}, "litellm_overhead_time_ms": 0},
+}
+logger = PrometheusLogger()
+litellm.callbacks = [logger]
+asyncio.run(logger.async_log_success_event({"model": "qa-unused", "litellm_params": {"metadata": metadata}, "standard_logging_object": payload}, {"model": "qa-unused"}, None, None))
+text = generate_latest(REGISTRY).decode()
+samples = [line for line in text.splitlines() if line.startswith("litellm_")]
+assert samples, "production Prometheus callback emitted no litellm samples"
+metadata_lines = sorted(line for line in text.splitlines() if line.startswith("# HELP ") or line.startswith("# TYPE "))
+print(f"fixture_metric_sample_count={len(samples)}")
+print(f"fixture_metric_metadata_sha256={hashlib.sha256(('\\n'.join(metadata_lines)).encode()).hexdigest()}")
+print("fixture_team_metadata=true")
+PY
+
 run_case() {
   local name=$1 image=$2
   docker run -d --rm --name "$name" --network none \
@@ -50,6 +95,7 @@ run_case() {
     -e OTEL_EXPORTER=console \
     -v "$workdir/config.yaml:/tmp/config.yaml:ro" \
     -v "$workdir/provider.py:/tmp/provider.py:ro" \
+    -v "$workdir/prom_fixture.py:/tmp/prom_fixture.py:ro" \
     "$image" --config /tmp/config.yaml --host 0.0.0.0 --port 4000 >/dev/null
 
   for _ in $(seq 1 60); do
@@ -60,6 +106,7 @@ run_case() {
   done
   docker exec -d "$name" python /tmp/provider.py >/dev/null
   sleep 1
+  docker exec "$name" python /tmp/prom_fixture.py >&2
   docker exec "$name" python -c 'import hashlib, importlib.util; s=importlib.util.find_spec("litellm.integrations.opentelemetry"); p=s.origin; print(f"runtime_otel_path={p}"); print(f"runtime_otel_sha256={hashlib.sha256(open(p,"rb").read()).hexdigest()}")' >&2
   docker exec "$name" python -c 'import urllib.request, json; req=urllib.request.Request("http://127.0.0.1:4000/v1/chat/completions", data=json.dumps({"model":"qa-unused","messages":[{"role":"user","content":"qa"}]}).encode(), headers={"Authorization":"Bearer qa-master","Content-Type":"application/json"}); print(urllib.request.urlopen(req, timeout=5).status)' >"$workdir/$name.provider" 2>&1 || true
   cat "$workdir/$name.provider" >&2
