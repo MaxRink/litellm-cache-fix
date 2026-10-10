@@ -10,13 +10,34 @@ model_list:
   - model_name: qa-unused
     litellm_params:
       model: openai/unused
-      api_base: http://127.0.0.1:9/v1
+      api_base: http://127.0.0.1:18080/v1
       api_key: qa-unused
 general_settings:
   master_key: qa-master
 litellm_settings:
   callbacks: [prometheus, otel]
 YAML
+
+cat >"$workdir/provider.py" <<'PY'
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import json
+
+class Handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        length = int(self.headers.get("content-length", "0"))
+        self.rfile.read(length)
+        body = {"id": "qa-completion", "object": "chat.completion", "choices": [{"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}}
+        encoded = json.dumps(body).encode()
+        self.send_response(200)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+    def log_message(self, *_args):
+        pass
+
+HTTPServer(("127.0.0.1", 18080), Handler).serve_forever()
+PY
 
 run_case() {
   local name=$1 image=$2
@@ -28,6 +49,7 @@ run_case() {
     -e LITELLM_OTEL_INTEGRATION_ENABLE_EVENTS=false \
     -e OTEL_EXPORTER=console \
     -v "$workdir/config.yaml:/tmp/config.yaml:ro" \
+    -v "$workdir/provider.py:/tmp/provider.py:ro" \
     "$image" --config /tmp/config.yaml --host 0.0.0.0 --port 4000 >/dev/null
 
   for _ in $(seq 1 60); do
@@ -36,8 +58,10 @@ run_case() {
     fi
     sleep 1
   done
+  docker exec -d "$name" python /tmp/provider.py >/dev/null
+  sleep 1
   docker exec "$name" python -c 'import hashlib, importlib.util; s=importlib.util.find_spec("litellm.integrations.opentelemetry"); p=s.origin; print(f"runtime_otel_path={p}"); print(f"runtime_otel_sha256={hashlib.sha256(open(p,"rb").read()).hexdigest()}")' >&2
-  docker exec "$name" python -c 'import urllib.request, json; req=urllib.request.Request("http://127.0.0.1:4000/v1/chat/completions", data=json.dumps({"model":"qa-unused","messages":[{"role":"user","content":"qa"}]}).encode(), headers={"Authorization":"Bearer qa-master","Content-Type":"application/json"}); urllib.request.urlopen(req, timeout=3)' >/dev/null 2>&1 || true
+  docker exec "$name" python -c 'import urllib.request, json; req=urllib.request.Request("http://127.0.0.1:4000/v1/chat/completions", data=json.dumps({"model":"qa-unused","messages":[{"role":"user","content":"qa"}]}).encode(), headers={"Authorization":"Bearer qa-master","Content-Type":"application/json"}); urllib.request.urlopen(req, timeout=5)' >/dev/null
   docker exec "$name" python -c 'from opentelemetry.sdk.trace import TracerProvider; from litellm.integrations.opentelemetry import OpenTelemetry; p=TracerProvider(); s=p.get_tracer("qa").start_span("team"); o=OpenTelemetry(tracer_provider=p); o.safe_set_attribute(s, "team.id", "qa-team"); assert s.attributes.get("team.id") == "qa-team"; s.end(); print("team_attribute_preserved=true")' >&2
   if ! docker exec "$name" python -c 'import urllib.request; req=urllib.request.Request("http://127.0.0.1:4000/metrics/", headers={"Authorization":"Bearer qa-master"}); r=urllib.request.urlopen(req, timeout=5); body=r.read(); assert r.status == 200 and body, r.status' \
     >"$workdir/$name.metrics"; then
