@@ -51,8 +51,9 @@ jobs:
     name: lens-worker-image (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+      (github.event_name != 'schedule' || github.repository == 'BerriAI/litellm') &&
+      (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository)
     timeout-minutes: 45
     permissions:
       contents: read
@@ -102,8 +103,9 @@ jobs:
     name: image-scan
     runs-on: ubuntu-latest
     if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+      (github.event_name != 'schedule' || github.repository == 'BerriAI/litellm') &&
+      (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository)
     timeout-minutes: 30
     permissions:
       contents: read

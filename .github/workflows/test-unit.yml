@@ -122,7 +122,12 @@ jobs:
   unit:
     name: ${{ matrix.shard }}
     needs: [rust-bridge, assert-shard-coverage]
-    if: ${{ !cancelled() }}
+    # Keep the matrix from starting after a prerequisite has failed or been
+    # canceled. The explicit result checks matter because a status function
+    # such as !cancelled() overrides the implicit success() condition for a
+    # job with needs; without them, an obsolete run can still fan out all
+    # shards while its prerequisites are already unusable.
+    if: ${{ !cancelled() && needs['rust-bridge'].result == 'success' && needs['assert-shard-coverage'].result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.job-timeout-minutes }}
     permissions:
