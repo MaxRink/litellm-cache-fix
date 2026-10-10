@@ -939,16 +939,19 @@ class LLMCachingHandler:
         self,
         request_kwargs: dict[str, object],  # mutable-ok: helper normalizes embedding inputs in place
     ) -> object | None:
+        cache: Final = litellm.cache
+        if cache is None:
+            return None
         request_kwargs["input"] = self.handle_kwargs_input_list_or_str(request_kwargs)
         tasks: Final[list[Awaitable[object]]] = []  # mutable-ok: collect concurrent cache reads
         for input_value in request_kwargs["input"]:
-            preset_cache_key = litellm.cache.get_cache_key(
+            preset_cache_key = cache.get_cache_key(
                 **cast(dict[str, object], {**request_kwargs, "input": input_value})  # cast-ok: dynamic cache kwargs
             )
             if preset_cache_key is None:
                 return None
             tasks.append(
-                litellm.cache.async_get_cache(
+                cache.async_get_cache(
                     cache_key=preset_cache_key,
                     dynamic_cache_object=self.dual_cache,
                 )
