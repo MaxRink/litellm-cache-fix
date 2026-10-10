@@ -93,6 +93,41 @@ def test_same_call_followup_is_bounded_and_other_call_is_silent(monkeypatch):
     assert all("diagnostic fixture" not in json.dumps(args) for args in records)
 
 
+def test_exhausted_call_can_reenroll_after_ttl(monkeypatch):
+    cache, namespace = _load_helpers()
+    records = []
+    namespace["verbose_logger"].info = lambda *args: records.append(args)
+    messages = [{"role": "user", "content": "ttl fixture"}]
+    encoded_messages = json.dumps(messages, sort_keys=True, separators=(",", ":"), default=str).encode()
+    real_sha256 = hashlib.sha256
+
+    class Digest:
+        def __init__(self, value):
+            self.value = value
+
+        def hexdigest(self):
+            return self.value
+
+    def sha256(value=b""):
+        if value == encoded_messages:
+            return Digest("10ee9c833aa5c34b" + "0" * 48)
+        return real_sha256(value)
+
+    namespace["hashlib"].sha256 = sha256
+    monkeypatch.setenv("LITELLM_CACHE_KEY_DIAGNOSTIC", "1")
+    kwargs = {
+        "litellm_call_id": "call-ttl",
+        "metadata": {"model_group": "ha-local", "user_api_key_alias": "paperless-gpt"},
+        "messages": messages,
+    }
+    for i in range(3):
+        cache._emit_cache_key_diagnostic(cache_key=f"before-{i}", kwargs=kwargs)
+    assert len(records) == 3
+    namespace["time"].monotonic = lambda: 71.0
+    cache._emit_cache_key_diagnostic(cache_key="after-ttl", kwargs=kwargs)
+    assert len(records) == 4
+
+
 def test_wrong_base_hash_is_rejected():
     base = SOURCE.with_name("base-d544-1227bd.caching.py")
     expected = "1227bd9292d28462e9db12946238dcc2f5caf20cd40ba9ebd504d27fa25c96e0"
