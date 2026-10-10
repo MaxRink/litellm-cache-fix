@@ -19,7 +19,7 @@ import datetime
 import inspect
 import time
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Generator, Mapping
-from typing import TYPE_CHECKING, Any, Final, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Final, Optional, TypeVar, cast
 
 from pydantic import ConfigDict, SkipValidation, ValidationError
 
@@ -445,7 +445,9 @@ class LLMCachingHandler:
             if new_kwargs.get("metadata") is None:
                 new_kwargs.pop("metadata", None)
             if new_kwargs.get("stream") is True and "cache_key" not in new_kwargs:
-                new_kwargs["cache_key"] = litellm.cache.get_cache_key(**new_kwargs)
+                derived_cache_key = litellm.cache.get_cache_key(**cast(dict[str, object], new_kwargs))
+                if derived_cache_key is not None:
+                    new_kwargs["cache_key"] = derived_cache_key
             self.request_kwargs = _drop_logging_obj_from_kwargs(new_kwargs)
             print_verbose("Checking Sync Cache")
             with response_cache_phase("get"):
@@ -853,14 +855,18 @@ class LLMCachingHandler:
         if new_kwargs.get("metadata") is None:
             new_kwargs.pop("metadata", None)
         if new_kwargs.get("stream") is True and "cache_key" not in new_kwargs:
-            new_kwargs["cache_key"] = litellm.cache.get_cache_key(**new_kwargs)
+            derived_cache_key = litellm.cache.get_cache_key(**cast(dict[str, object], new_kwargs))
+            if derived_cache_key is not None:
+                new_kwargs["cache_key"] = derived_cache_key
         self.request_kwargs = _drop_logging_obj_from_kwargs(new_kwargs)
         cached_result: object | None = None
         if call_type == CallTypes.aembedding.value:
             new_kwargs["input"] = self.handle_kwargs_input_list_or_str(new_kwargs)
             tasks: Final[list[Awaitable[object]]] = []
             for idx, i in enumerate(new_kwargs["input"]):
-                preset_cache_key = litellm.cache.get_cache_key(**{**new_kwargs, "input": i})
+                preset_cache_key = litellm.cache.get_cache_key(**cast(dict[str, object], {**new_kwargs, "input": i}))
+                if preset_cache_key is None:
+                    return None
                 tasks.append(
                     litellm.cache.async_get_cache(
                         cache_key=preset_cache_key,
@@ -879,12 +885,16 @@ class LLMCachingHandler:
             request_kwargs: Final = new_kwargs.copy()
             request_cache_key: Final = _request_cache_key(request_kwargs)
             request_kwargs.pop("cache_key", None)
+            derived_cache_key = litellm.cache.get_cache_key(**cast(dict[str, object], request_kwargs))
+            if request_cache_key is None and derived_cache_key is None:
+                self.preset_cache_key = None
+                return None
             if litellm.cache.supports_async() is True:
                 ## check if dual cache is supported ##
                 self.preset_cache_key = (
                     litellm.cache.get_cache_key_from_explicit_key(request_cache_key, **request_kwargs)
                     if request_cache_key is not None
-                    else litellm.cache.get_cache_key(**request_kwargs)
+                    else derived_cache_key
                 )
                 if request_cache_key is not None:
                     self.request_kwargs["cache_key"] = self.preset_cache_key
@@ -898,7 +908,7 @@ class LLMCachingHandler:
                 self.preset_cache_key = (
                     litellm.cache.get_cache_key_from_explicit_key(request_cache_key, **request_kwargs)
                     if request_cache_key is not None
-                    else litellm.cache.get_cache_key(**request_kwargs)
+                    else derived_cache_key
                 )
                 if request_cache_key is not None:
                     self.request_kwargs["cache_key"] = self.preset_cache_key

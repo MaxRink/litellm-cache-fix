@@ -374,7 +374,7 @@ class Cache:
         )
         return "".join(f"{field}: {value}" for field, value in scope_values if value is not None)
 
-    def get_cache_key(self, **kwargs) -> str | None:
+    def get_cache_key(self, **kwargs: object) -> str | None:
         """
         Get the cache key for the given arguments.
 
