@@ -389,9 +389,9 @@ class Cache:
 
         preset_cache_key: Final = self.get_preset_cache_key_from_kwargs(**kwargs)
         if preset_cache_key is not None:
-            authenticated_namespace: str | None = self._get_authenticated_cache_namespace(**kwargs)
+            authenticated_namespace: Final[str | None] = self._get_authenticated_cache_namespace(**kwargs)
             if authenticated_namespace is not None:
-                namespace_prefix = ":".join(
+                namespace_prefix: Final = ":".join(
                     value for value in (self.namespace, authenticated_namespace) if isinstance(value, str) and value
                 )
                 if not preset_cache_key.startswith(f"{namespace_prefix}:"):
@@ -434,7 +434,11 @@ class Cache:
         self._set_preset_cache_key_in_kwargs(preset_cache_key=hashed_cache_key, **kwargs_for_preset)
         return hashed_cache_key
 
-    def get_cache_key_from_explicit_key(self, cache_key: str, **kwargs: object) -> str:
+    def get_cache_key_from_explicit_key(
+        self,
+        cache_key: str,
+        **kwargs: object,  # kwargs-ok: proxy cache context is keyword-only and extensible
+    ) -> str:
         """Normalize an explicit request key before proxy cache lookup/storage.
 
         Explicit keys are caller-controlled, so authenticated proxy requests
@@ -572,8 +576,8 @@ class Cache:
         metadata_sources: Final = tuple(
             source for source in (kwargs.get("metadata"), kwargs.get("litellm_metadata")) if isinstance(source, Mapping)
         )
-        authenticated_namespace: str | None = self._get_authenticated_cache_namespace(**kwargs)
-        authenticated_request: bool = authenticated_namespace is not None
+        authenticated_namespace: Final[str | None] = self._get_authenticated_cache_namespace(**kwargs)
+        authenticated_request: Final = authenticated_namespace is not None
         if authenticated_request:
             namespace: Final = ":".join(
                 value for value in (self.namespace, authenticated_namespace) if isinstance(value, str) and value
@@ -585,11 +589,14 @@ class Cache:
                 or self.namespace
             )
         if namespace:
-            hash_hex = f"{namespace}:{hash_hex}"
+            hash_hex = f"{namespace}:{hash_hex}"  # rebind-ok: namespace prefix is the final cache key representation
         verbose_logger.debug("Final hashed key: %s", hash_hex)
         return hash_hex
 
-    def _get_authenticated_cache_namespace(self, **kwargs: object) -> str | None:
+    def _get_authenticated_cache_namespace(
+        self,
+        **kwargs: object,  # kwargs-ok: metadata evolves with proxy request context
+    ) -> str | None:
         """Derive the opaque cache namespace from the server-authenticated key."""
         metadata_sources: Final = tuple(
             source for source in (kwargs.get("metadata"), kwargs.get("litellm_metadata")) if isinstance(source, Mapping)
@@ -597,7 +604,7 @@ class Cache:
         try:
             from litellm.proxy._types import UserAPIKeyAuth
         except ImportError:
-            UserAPIKeyAuth = None  # type: ignore[assignment,misc]
+            return None
         for metadata in metadata_sources:
             auth_object: object | None = metadata.get("user_api_key_auth")
             if UserAPIKeyAuth is not None and isinstance(auth_object, UserAPIKeyAuth):
