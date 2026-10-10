@@ -83,7 +83,7 @@ for root in sys.path:
     if path.exists():
         text = path.read_text()
         needle = "    def set_attribute(self, key: str, value: types.AttributeValue) -> None:\n"
-        replacement = needle + "        if not self.is_recording():\n            import sys, traceback\n            print('ENDED_SPAN_CALLSITE\\n' + ''.join(traceback.format_stack(limit=12)), file=sys.stderr)\n"
+        replacement = needle + "        if not self.is_recording():\n            import sys, traceback\n            print('ENDED_SPAN_CALLSITE\\n' + ''.join(traceback.format_stack(limit=30)), file=sys.stderr)\n"
         if needle not in text:
             raise SystemExit(f"SDK set_attribute insertion point not found: {path}")
         path.write_text(text.replace(needle, replacement, 1))
@@ -99,6 +99,6 @@ fi
 echo "guarded_warning_count=$guarded_warning_count"
 
 for log in "$workdir"/*.log; do
-  awk '/ENDED_SPAN_CALLSITE/{show=1; left=14} show && left-- > 0 {print}' "$log" \
+  awk '/ENDED_SPAN_CALLSITE/{show=1; left=34} show && left-- > 0 {print}' "$log" \
     | sed -E 's/(Authorization|api_key|token|prompt|messages)[^ ]*/[redacted]/Ig' || true
 done
