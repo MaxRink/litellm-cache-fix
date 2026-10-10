@@ -210,7 +210,7 @@ for root in sys.path:
     if path.exists():
         text = path.read_text()
         needle = "                    for key, value in bag.items():\n                        server_span.set_attribute(key, value)"
-        replacement = "                    for key, value in bag.items():\n                        if is_recordable_span(server_span):\n                            server_span.set_attribute(key, value)"
+        replacement = "                    for key, value in bag.items():\n                        if is_recordable_span(server_span) and server_span.is_recording():\n                            server_span.set_attribute(key, value)"
         if needle not in text:
             raise SystemExit(f"logger guard insertion point not found: {path}")
         path.write_text(text.replace(needle, replacement, 1))
