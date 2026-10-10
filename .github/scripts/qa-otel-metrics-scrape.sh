@@ -63,6 +63,7 @@ run_case() {
   docker exec "$name" python -c 'import hashlib, importlib.util; s=importlib.util.find_spec("litellm.integrations.opentelemetry"); p=s.origin; print(f"runtime_otel_path={p}"); print(f"runtime_otel_sha256={hashlib.sha256(open(p,"rb").read()).hexdigest()}")' >&2
   docker exec "$name" python -c 'import urllib.request, json; req=urllib.request.Request("http://127.0.0.1:4000/v1/chat/completions", data=json.dumps({"model":"qa-unused","messages":[{"role":"user","content":"qa"}]}).encode(), headers={"Authorization":"Bearer qa-master","Content-Type":"application/json"}); print(urllib.request.urlopen(req, timeout=5).status)' >"$workdir/$name.provider" 2>&1 || true
   cat "$workdir/$name.provider" >&2
+  sleep 3
   docker exec "$name" python -c 'from opentelemetry.sdk.trace import TracerProvider; from litellm.integrations.opentelemetry import OpenTelemetry; p=TracerProvider(); s=p.get_tracer("qa").start_span("team"); o=OpenTelemetry(tracer_provider=p); o.safe_set_attribute(s, "team.id", "qa-team"); assert s.attributes.get("team.id") == "qa-team"; s.end(); print("team_attribute_preserved=true")' >&2
   if ! docker exec "$name" python -c 'import urllib.request; req=urllib.request.Request("http://127.0.0.1:4000/metrics/", headers={"Authorization":"Bearer qa-master"}); r=urllib.request.urlopen(req, timeout=5); body=r.read(); assert r.status == 200 and body, r.status' \
     >"$workdir/$name.metrics"; then
