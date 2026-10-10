@@ -149,6 +149,8 @@ def test_wrong_base_hash_is_rejected():
 
     dockerfile = SOURCE.with_name("Dockerfile").read_text()
     assert "verify_base.py" in dockerfile
+    assert "RUN python /tmp/verify_base.py /app/.venv/lib/python3.13/site-packages/litellm/caching/caching.py" in dockerfile
+    assert "COPY base-d544-1227bd.caching.py" not in dockerfile
     assert expected in verifier.read_text()
 
 
