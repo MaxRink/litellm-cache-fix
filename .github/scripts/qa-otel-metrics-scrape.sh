@@ -157,12 +157,17 @@ run_case() {
   cat "$workdir/$name.provider" >&2
   sleep 3
   docker exec "$name" python -c 'from opentelemetry.sdk.trace import TracerProvider; from litellm.integrations.opentelemetry import OpenTelemetry; p=TracerProvider(); s=p.get_tracer("qa").start_span("team"); o=OpenTelemetry(tracer_provider=p); o.safe_set_attribute(s, "team.id", "qa-team"); assert s.attributes.get("team.id") == "qa-team"; s.end(); print("team_attribute_preserved=true")' >&2
-  if ! docker exec "$name" python -c 'import urllib.request; req=urllib.request.Request("http://127.0.0.1:4000/metrics/", headers={"Authorization":"Bearer qa-master"}); r=urllib.request.urlopen(req, timeout=5); body=r.read(); assert r.status == 200 and body, r.status' \
-    >"$workdir/$name.metrics"; then
+  local body
+  if ! body=$(docker exec "$name" python -c 'import urllib.request; req=urllib.request.Request("http://127.0.0.1:4000/metrics/", headers={"Authorization":"Bearer qa-master"}); r=urllib.request.urlopen(req, timeout=5); body=r.read(); assert r.status == 200 and body, r.status; print(body.decode(), end="")'); then
     echo "metrics_scrape_failed=$name" >&2
     docker logs "$name" >&2 || true
     return 1
   fi
+  if [[ -z "$body" ]]; then
+    echo "metrics_scrape_empty=$name" >&2
+    return 1
+  fi
+  printf '%s\n' "$body" >"$workdir/$name.metrics"
   sed -n '1,30p' "$workdir/$name.metrics" | sed -E 's/(Authorization|api_key|token|prompt|messages)[^ ]*/[redacted]/Ig' >&2
   sleep 2
   docker logs "$name" >"$workdir/$name.log" 2>&1 || true
@@ -186,6 +191,10 @@ if ! baseline_warning_count=$(run_case otel-qa-base "$base_image" | tail -1); th
   exit 1
 fi
 echo "baseline_warning_count=$baseline_warning_count"
+if [[ "$baseline_warning_count" -le 0 ]]; then
+  echo "baseline_warning_not_reproduced=$baseline_warning_count" >&2
+  exit 1
+fi
 
 cat >"$workdir/Dockerfile" <<'DOCKERFILE'
 ARG BASE_IMAGE
@@ -243,6 +252,10 @@ if ! guarded_warning_count=$(run_case otel-qa-guarded otel-qa-guarded | tail -1)
   exit 1
 fi
 echo "guarded_warning_count=$guarded_warning_count"
+if [[ "$guarded_warning_count" -ne 0 ]]; then
+  echo "guarded_warning_persisted=$guarded_warning_count" >&2
+  exit 1
+fi
 
 base_metadata=$(awk '/^# (HELP|TYPE) /{print}' "$workdir/otel-qa-base.metrics" | sort -u | sha256sum | awk '{print $1}')
 guarded_metadata=$(awk '/^# (HELP|TYPE) /{print}' "$workdir/otel-qa-guarded.metrics" | sort -u | sha256sum | awk '{print $1}')
