@@ -87,6 +87,7 @@ stable_samples = sorted(
     and "_created{" not in line
 )
 assert stable_samples, "production Prometheus callback emitted no stable request counter"
+assert any('team="qa-team"' in line and 'user="qa-user"' in line and 'api_key_alias="qa-alias"' in line for line in stable_samples), "production Prometheus samples omitted caller/team metadata"
 print(f"fixture_metric_sample_count={len(samples)}")
 print(f"fixture_metric_metadata_sha256={hashlib.sha256(('\\n'.join(metadata_lines)).encode()).hexdigest()}")
 print(f"fixture_counter_values_sha256={hashlib.sha256(('\\n'.join(stable_samples)).encode()).hexdigest()}")
@@ -119,7 +120,18 @@ run_case() {
   sleep 1
   docker exec "$name" python /tmp/prom_fixture.py >"$workdir/$name.fixture" 2>&1
   cat "$workdir/$name.fixture" >&2
-  docker exec "$name" python -c 'import hashlib, importlib.util; s=importlib.util.find_spec("litellm.integrations.opentelemetry"); p=s.origin; print(f"runtime_otel_path={p}"); print(f"runtime_otel_sha256={hashlib.sha256(open(p,"rb").read()).hexdigest()}")' >&2
+  local runtime_sha
+  runtime_sha=$(docker exec "$name" python -c 'import hashlib, importlib.util; s=importlib.util.find_spec("litellm.integrations.opentelemetry"); p=s.origin; print(hashlib.sha256(open(p,"rb").read()).hexdigest())')
+  echo "runtime_otel_path=$(docker exec "$name" python -c 'import importlib.util; print(importlib.util.find_spec("litellm.integrations.opentelemetry").origin)')" >&2
+  echo "runtime_otel_sha256=$runtime_sha" >&2
+  if [[ "$name" == otel-qa-base && "$runtime_sha" != a0b304266e1d9a516e29a24e47ad340385525abd064ef3cda12e17a84121703d ]]; then
+    echo "unexpected_base_runtime_sha=$runtime_sha" >&2
+    return 1
+  fi
+  if [[ "$name" == otel-qa-guarded && "$runtime_sha" != b8b83cb28eae3bbd422b29044e559ad132b3a9279588338bbd45f4571540cf53 ]]; then
+    echo "unexpected_guarded_runtime_sha=$runtime_sha" >&2
+    return 1
+  fi
   docker exec "$name" python -c 'import urllib.request, json; req=urllib.request.Request("http://127.0.0.1:4000/v1/chat/completions", data=json.dumps({"model":"qa-unused","messages":[{"role":"user","content":"qa"}]}).encode(), headers={"Authorization":"Bearer qa-master","Content-Type":"application/json"}); print(urllib.request.urlopen(req, timeout=5).status)' >"$workdir/$name.provider" 2>&1 || true
   cat "$workdir/$name.provider" >&2
   sleep 3
@@ -174,22 +186,6 @@ for root in sys.path:
 else:
     raise SystemExit("installed LiteLLM source not found")
 
-# Diagnostic-only overlay: retain the original SDK behavior while recording
-# the sanitized caller stack for ended-span writes. No attribute keys/values
-# or request data are emitted.
-for root in sys.path:
-    path = Path(root) / "opentelemetry/sdk/trace/__init__.py"
-    if path.exists():
-        text = path.read_text()
-        needle = "    def set_attribute(self, key: str, value: types.AttributeValue) -> None:\n"
-        replacement = needle + "        if not self.is_recording():\n            import sys, traceback\n            print('ENDED_SPAN_CALLSITE\\n' + ''.join(traceback.format_stack(limit=30)), file=sys.stderr)\n"
-        if needle not in text:
-            raise SystemExit(f"SDK set_attribute insertion point not found: {path}")
-        path.write_text(text.replace(needle, replacement, 1))
-        break
-else:
-    raise SystemExit("installed OpenTelemetry SDK source not found")
-
 print("OTEL_SOURCE_IDENTITY")
 try:
     from importlib.metadata import version
@@ -200,34 +196,6 @@ try:
             pass
 except Exception:
     pass
-for root in sys.path:
-    for source_root in (Path(root) / "opentelemetry/instrumentation", Path(root) / "litellm"):
-        if not source_root.exists():
-            continue
-        for path in sorted(source_root.rglob("*.py")):
-            if "/site-packages/litellm/" not in str(path) and "opentelemetry/instrumentation" not in str(path):
-                continue
-            lines = path.read_text(errors="replace").splitlines(keepends=True)
-            rewritten = []
-            for lineno, line in enumerate(lines, 1):
-                if ".set_attribute(" in line:
-                    indent = line[: len(line) - len(line.lstrip())]
-                    rewritten.append(f'{indent}print("OTEL_CALLSITE {path}:{lineno}", file=sys.stderr)\n')
-                rewritten.append(line)
-            path.write_text("".join(rewritten))
-
-for root in sys.path:
-    path = Path(root) / "opentelemetry/instrumentation/asgi/__init__.py"
-    if path.exists():
-        text = path.read_text()
-        for expression, replacement in (
-            ("                    receive_span.set_attribute(\n", "                    print(\"ASGI_SET_ATTRIBUTE_RECEIVE\", file=sys.stderr)\n                    receive_span.set_attribute(\n"),
-            ("                send_span.set_attribute(\"asgi.event.type\", message[\"type\"])\n", "                print(\"ASGI_SET_ATTRIBUTE_SEND\", file=sys.stderr)\n                send_span.set_attribute(\"asgi.event.type\", message[\"type\"])\n"),
-            ("                        current_span.set_attribute(key, value)\n", "                        print(\"ASGI_SET_ATTRIBUTE_SERVER\", file=sys.stderr)\n                        current_span.set_attribute(key, value)\n"),
-        ):
-            text = text.replace(expression, replacement, 1)
-        path.write_text(text)
-        break
 PY
 DOCKERFILE
 docker build --build-arg BASE_IMAGE="$base_image" -t otel-qa-guarded "$workdir" >/dev/null
