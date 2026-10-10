@@ -106,6 +106,14 @@ for root in sys.path:
         for lineno, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
             if ".set_attribute(" in line:
                 print(f"OTEL_SET_ATTRIBUTE_SOURCE {path}:{lineno}")
+        lines = path.read_text(errors="replace").splitlines(keepends=True)
+        rewritten = []
+        for lineno, line in enumerate(lines, 1):
+            if ".set_attribute(" in line:
+                indent = line[: len(line) - len(line.lstrip())]
+                rewritten.append(f'{indent}print("OTEL_CALLSITE {path}:{lineno}", file=sys.stderr)\n')
+            rewritten.append(line)
+        path.write_text("".join(rewritten))
 
 for root in sys.path:
     path = Path(root) / "opentelemetry/instrumentation/asgi/__init__.py"
