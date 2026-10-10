@@ -8,6 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v4
       - name: Pull pinned production image
         run: docker pull ghcr.io/maxrink/litellm-otel-cache-fix@sha256:d544bc8c2000be45030b07c23959de3877420e2df4cffe57d8d87d9e33c70ee2
       - name: Run real Ollama adapter with mocked transport
