@@ -1,0 +1,23 @@
+name: Temporary OTEL metrics scrape QA
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  scrape:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Run exact d544 baseline and guarded comparison
+        env:
+          BASE_IMAGE: ghcr.io/maxrink/litellm-otel-cache-fix@sha256:d544bc8c2000be45030b07c23959de3877420e2df4cffe57d8d87d9e33c70ee2
+        run: bash .github/scripts/qa-otel-metrics-scrape.sh "$BASE_IMAGE"

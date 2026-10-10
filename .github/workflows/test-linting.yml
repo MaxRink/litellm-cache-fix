@@ -66,9 +66,9 @@ jobs:
           path: |
             ~/.cache/uv
             .venv
-          key: ${{ runner.os }}-uv-lint-${{ hashFiles('uv.lock') }}
+          key: ${{ runner.os }}-uv-lint-${{ github.repository_id }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            ${{ runner.os }}-uv-lint-
+            ${{ runner.os }}-uv-lint-${{ github.repository_id }}-
 
       - name: Clean Python cache
         if: steps.changes.outputs.decision != 'skip'
@@ -97,7 +97,7 @@ jobs:
       - name: Generate Prisma client
         if: steps.changes.outputs.decision != 'skip'
         run: |
-          uv run --no-sync prisma generate --schema litellm/proxy/schema.prisma
+          uvx --from prisma==0.11.0 prisma generate --schema litellm/proxy/schema.prisma
 
       - name: Check ruff format
         if: steps.changes.outputs.decision != 'skip'
@@ -380,9 +380,9 @@ jobs:
           path: |
             ~/.cache/uv
             .venv
-          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+          key: ${{ runner.os }}-uv-${{ github.repository_id }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            ${{ runner.os }}-uv-
+            ${{ runner.os }}-uv-${{ github.repository_id }}-
 
       - name: Cache the Rust build
         if: steps.changes.outputs.relevant == 'true'
@@ -398,7 +398,7 @@ jobs:
 
       - name: Generate Prisma client
         if: steps.changes.outputs.relevant == 'true'
-        run: uv run --no-sync prisma generate --schema litellm/proxy/schema.prisma
+        run: uvx --from prisma==0.11.0 prisma generate --schema litellm/proxy/schema.prisma
 
       - name: Regenerate the lazy OpenAPI snapshot
         if: steps.changes.outputs.relevant == 'true'
@@ -486,9 +486,9 @@ jobs:
           path: |
             ~/.cache/uv
             .venv
-          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+          key: ${{ runner.os }}-uv-${{ github.repository_id }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            ${{ runner.os }}-uv-
+            ${{ runner.os }}-uv-${{ github.repository_id }}-
 
       - name: Cache the Rust build
         uses: ./.github/actions/cache-cargo-build
@@ -512,23 +512,23 @@ jobs:
         run: uv run --no-sync python ./tests/code_coverage_tests/check_workflow_job_name_collisions.py
 
       - name: test_workflow_job_name_collisions
-        run: uv run --no-sync pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_workflow_job_name_collisions.py
+        run: uvx --from pytest==9.0.3 --with pyyaml==6.0.3 --with pydantic==2.13.4 pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_workflow_job_name_collisions.py
 
       - name: test_unit_passed_gate
-        run: uv run --no-sync pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_unit_passed_gate.py
+        run: uvx --from pytest==9.0.3 --with pyyaml==6.0.3 --with pydantic==2.13.4 pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_unit_passed_gate.py
 
       - name: test_e2e_changed_gate
-        run: uv run --no-sync pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_e2e_changed_gate.py tests/code_coverage_tests/test_e2e_idp_stack.py
+        run: uvx --from pytest==9.0.3 --with pyyaml==6.0.3 --with pydantic==2.13.4 pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_e2e_changed_gate.py tests/code_coverage_tests/test_e2e_idp_stack.py
 
       - name: test_e2e_metadata
         env:
           PYTHONPATH: tests/e2e
         run: |
           export LITELLM_MASTER_KEY="sk-$(openssl rand -hex 16)"
-          uv run --no-sync pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_e2e_metadata.py tests/code_coverage_tests/test_e2e_junit_report.py
+          uvx --from pytest==9.0.3 --with pyyaml==6.0.3 --with pydantic==2.13.4 --with requests==2.34.0 --with python-dotenv==1.2.2 --with botocore==1.43.6 --with boto3==1.43.1 --with anthropic==0.84.0 --with openai==2.33.0 --with websockets==15.0.1 --with pyjwt==2.15.0 --with pytest-rerunfailures==15.1 --with httpx2==2.13.0 --with mcp==2.2.0 --with psycopg==3.3.3 --with psycopg-binary==3.3.3 pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_e2e_metadata.py tests/code_coverage_tests/test_e2e_junit_report.py
 
       - name: Check merge smoke harness
-        run: uv run --no-sync pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_merge_smoke.py
+        run: uvx --from pytest==9.0.3 --with pyyaml==6.0.3 --with pydantic==2.13.4 pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_merge_smoke.py
 
       - name: router_code_coverage
         run: uv run --no-sync python ./tests/code_coverage_tests/router_code_coverage.py
@@ -597,7 +597,7 @@ jobs:
         run: uv run --no-sync python ./tests/code_coverage_tests/check_no_publicly_known_master_key.py
 
       - name: test_check_no_publicly_known_master_key
-        run: uv run --no-sync pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_check_no_publicly_known_master_key.py
+        run: uvx --from pytest==9.0.3 --with pyyaml==6.0.3 --with pydantic==2.13.4 pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_check_no_publicly_known_master_key.py
 
       - name: check_unbounded_in_lists (fails on findings not in the baseline)
         run: uv run --no-sync python ./tests/code_coverage_tests/check_unbounded_in_lists.py

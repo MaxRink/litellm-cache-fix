@@ -19,6 +19,10 @@ jobs:
   osv-scan:
     name: osv-scan
     runs-on: ubuntu-latest
+    # The scheduled scan is an upstream-maintainer responsibility. Keep the
+    # PR and manual triggers available in owned forks without running a daily
+    # duplicate scan there.
+    if: github.event_name != 'schedule' || github.repository == 'BerriAI/litellm'
     timeout-minutes: 10
     permissions:
       contents: read

@@ -1,4 +1,8 @@
-from typing import Final, Literal
+from typing import (
+    Final,
+    Literal,
+    cast,  # noqa: TID251  # preserve the runtime-compatible auth header union
+)
 
 import httpx
 
@@ -26,6 +30,14 @@ from .transformation import (
     separate_cached_messages,
     transform_openai_messages_to_gemini_context_caching,
 )
+
+
+def _restore_context_options(optional_params: dict[str, object], tools: object, tool_choice: object) -> None:
+    if tools is not None:
+        optional_params["tools"] = tools  # rebind-ok: restore caller optional parameters
+    if tool_choice is not None:
+        optional_params["tool_choice"] = tool_choice  # rebind-ok: restore caller optional parameters
+
 
 local_cache_obj: Final = Cache(type=LiteLLMCacheType.LOCAL)  # only used for calling 'get_cache_key' function
 
@@ -60,7 +72,7 @@ class ContextCachingEndpoints(VertexBase):
         Returns
             token, url
         """
-        auth_header: str | None
+        auth_header: str | dict[str, str | None] | None  # mutable-ok: provider auth shape varies by API
         if custom_llm_provider == "gemini":
             auth_header = {"x-goog-api-key": gemini_api_key}
             endpoint = "cachedContents"
@@ -82,7 +94,9 @@ class ContextCachingEndpoints(VertexBase):
             gemini_api_key=gemini_api_key,
             endpoint=endpoint,
             stream=None,
-            auth_header=auth_header,
+            auth_header=cast(  # cast-ok: runtime-compatible auth header union
+                str | None, auth_header
+            ),
             url=url,
             model=model,
             vertex_project=vertex_project,
@@ -274,7 +288,7 @@ class ContextCachingEndpoints(VertexBase):
 
         return None
 
-    def check_and_create_cache(
+    def check_and_create_cache(  # noqa: C901  # fail-closed key handling restores provider options
         self,
         messages: list[AllMessageValues],  # receives openai format messages
         optional_params: dict,  # cache the tools if present, in case cache content exists in messages
@@ -367,9 +381,16 @@ class ContextCachingEndpoints(VertexBase):
             client = client
 
         ## CHECK IF CACHED ALREADY
-        generated_cache_key: Final = local_cache_obj.get_cache_key(
-            messages=cached_messages, tools=tools, tool_choice=tool_choice, model=model
-        )
+        cache_key_kwargs: Final[dict[str, object]] = {  # mutable-ok: cache key accepts dynamic request fields
+            "messages": cached_messages,
+            "tools": tools,
+            "tool_choice": tool_choice,
+            "model": model,
+        }
+        generated_cache_key: Final = local_cache_obj.get_cache_key(**cache_key_kwargs)
+        if not generated_cache_key:
+            _restore_context_options(optional_params, tools, tool_choice)
+            return messages, optional_params, None
         google_cache_name: Final = self.check_cache(
             cache_key=generated_cache_key,
             client=client,
@@ -522,9 +543,16 @@ class ContextCachingEndpoints(VertexBase):
             client = client
 
         ## CHECK IF CACHED ALREADY
-        generated_cache_key: Final = local_cache_obj.get_cache_key(
-            messages=cached_messages, tools=tools, tool_choice=tool_choice, model=model
-        )
+        cache_key_kwargs: Final[dict[str, object]] = {  # mutable-ok: cache key accepts dynamic request fields
+            "messages": cached_messages,
+            "tools": tools,
+            "tool_choice": tool_choice,
+            "model": model,
+        }
+        generated_cache_key: Final = local_cache_obj.get_cache_key(**cache_key_kwargs)
+        if not generated_cache_key:
+            _restore_context_options(optional_params, tools, tool_choice)
+            return messages, optional_params, None
         google_cache_name: Final = await self.async_check_cache(
             cache_key=generated_cache_key,
             client=client,

@@ -122,7 +122,12 @@ jobs:
   unit:
     name: ${{ matrix.shard }}
     needs: [rust-bridge, assert-shard-coverage]
-    if: ${{ !cancelled() }}
+    # Keep the matrix from starting after a prerequisite has failed or been
+    # canceled. The explicit result checks matter because a status function
+    # such as !cancelled() overrides the implicit success() condition for a
+    # job with needs; without them, an obsolete run can still fan out all
+    # shards while its prerequisites are already unusable.
+    if: ${{ !cancelled() && needs['rust-bridge'].result == 'success' && needs['assert-shard-coverage'].result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.job-timeout-minutes }}
     permissions:
@@ -979,6 +984,7 @@ jobs:
           else
             .github/scripts/uv_sync_with_retries.sh --frozen --group ci --group proxy-dev --extra google --extra proxy --extra semantic-router --extra saml --extra caching --extra extra_proxy --extra proxy-runtime --extra utils --no-install-project
             uv pip install --no-deps --python .venv/bin/python rust-bridge-dist/*.whl
+            uv pip install --no-deps --python .venv/bin/python --editable .
             cp rust-bridge-dist/litellm/rust_bridge/_native.abi3.so litellm/rust_bridge/_native.abi3.so
             uv run --no-sync python -c "import importlib.metadata; import litellm.rust_bridge._native; print(importlib.metadata.version('litellm'))"
           fi
@@ -993,7 +999,7 @@ jobs:
         if: steps.changes.outputs.decision != 'skip'
         timeout-minutes: 3
         run: |
-          uv run --no-sync prisma generate --schema litellm/proxy/schema.prisma
+          uv run --with prisma==0.11.0 prisma generate --schema litellm/proxy/schema.prisma
 
       - name: Run tests
         id: tests
@@ -1195,9 +1201,9 @@ jobs:
           path: |
             ~/.cache/uv
             .venv
-          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+          key: ${{ runner.os }}-uv-${{ github.repository_id }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            ${{ runner.os }}-uv-
+            ${{ runner.os }}-uv-${{ github.repository_id }}-
 
       - name: Cache uv dependencies
         if: steps.changes.outputs.decision != 'skip' && github.ref != 'refs/heads/main'
@@ -1206,9 +1212,9 @@ jobs:
           path: |
             ~/.cache/uv
             .venv
-          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+          key: ${{ runner.os }}-uv-${{ github.repository_id }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            ${{ runner.os }}-uv-
+            ${{ runner.os }}-uv-${{ github.repository_id }}-
 
       - name: Cache the Rust build
         if: steps.changes.outputs.decision != 'skip'
@@ -1226,7 +1232,7 @@ jobs:
       - name: Generate Prisma client
         if: steps.changes.outputs.decision != 'skip'
         run: |
-          uv run --no-sync prisma generate --schema litellm/proxy/schema.prisma
+          uv run --with prisma==0.11.0 prisma generate --schema litellm/proxy/schema.prisma
 
       - name: Run documentation validation tests
         if: steps.changes.outputs.decision != 'skip'

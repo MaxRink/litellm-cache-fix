@@ -73,7 +73,7 @@ jobs:
 
       - name: Generate Prisma client
         run: |
-          uv run --no-sync prisma generate --schema litellm/proxy/schema.prisma
+          uvx --from prisma==0.11.0 prisma generate --schema litellm/proxy/schema.prisma
 
       - name: Start the proxy
         run: |
@@ -171,7 +171,7 @@ jobs:
 
       - name: Generate Prisma client
         run: |
-          uv run --no-sync prisma generate --schema litellm/proxy/schema.prisma
+          uvx --from prisma==0.11.0 prisma generate --schema litellm/proxy/schema.prisma
 
       - name: Fetch the pinned fixture bundle by digest
         env:
