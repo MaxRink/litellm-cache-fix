@@ -99,7 +99,7 @@ PY
 cat >"$workdir/sitecustomize.py" <<'PY'
 import sys
 import traceback
-from opentelemetry.trace import Span
+from opentelemetry.sdk.trace import Span
 
 _original_set_attribute = Span.set_attribute
 
