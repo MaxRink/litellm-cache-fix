@@ -994,7 +994,7 @@ jobs:
         if: steps.changes.outputs.decision != 'skip'
         timeout-minutes: 3
         run: |
-          uv pip install --python .venv/bin/python --no-deps prisma==0.11.0
+          uv pip install --python .venv/bin/python prisma==0.11.0
           .venv/bin/prisma generate --schema litellm/proxy/schema.prisma
 
       - name: Run tests
@@ -1228,7 +1228,7 @@ jobs:
       - name: Generate Prisma client
         if: steps.changes.outputs.decision != 'skip'
         run: |
-          uv pip install --python .venv/bin/python --no-deps prisma==0.11.0
+          uv pip install --python .venv/bin/python prisma==0.11.0
           .venv/bin/prisma generate --schema litellm/proxy/schema.prisma
 
       - name: Run documentation validation tests
