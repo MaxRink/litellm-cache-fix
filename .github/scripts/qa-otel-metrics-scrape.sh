@@ -128,7 +128,7 @@ run_case() {
     echo "unexpected_base_runtime_sha=$runtime_sha" >&2
     return 1
   fi
-  if [[ "$name" == otel-qa-guarded && "$runtime_sha" != b8b83cb28eae3bbd422b29044e559ad132b3a9279588338bbd45f4571540cf53 ]]; then
+  if [[ "$name" == otel-qa-guarded && "$runtime_sha" != 25fc3957e53e5ba129dc77e4d58e88728b99a2970729de11062d850f0b7b9ec8 ]]; then
     echo "unexpected_guarded_runtime_sha=$runtime_sha" >&2
     return 1
   fi
