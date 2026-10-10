@@ -15,7 +15,7 @@ model_list:
 general_settings:
   master_key: qa-master
 litellm_settings:
-  callbacks: [otel]
+  callbacks: [prometheus, otel]
 YAML
 
 run_case() {
@@ -36,7 +36,7 @@ run_case() {
     fi
     sleep 1
   done
-  if ! docker exec "$name" python -c 'import urllib.request; req=urllib.request.Request("http://127.0.0.1:4000/metrics", headers={"Authorization":"Bearer qa-master"}); r=urllib.request.urlopen(req, timeout=5); body=r.read(); assert r.status == 200 and body, r.status' \
+  if ! docker exec "$name" python -c 'import urllib.request; req=urllib.request.Request("http://127.0.0.1:4000/metrics/", headers={"Authorization":"Bearer qa-master"}); r=urllib.request.urlopen(req, timeout=5); body=r.read(); assert r.status == 200 and body, r.status' \
     >/dev/null; then
     echo "metrics_scrape_failed=$name" >&2
     docker logs "$name" >&2 || true
@@ -50,7 +50,10 @@ run_case() {
   printf '%s\n' "$warning_count"
 }
 
-echo "baseline_warning_count=$(run_case otel-qa-base "$base_image" | tail -1)"
+if ! baseline_warning_count=$(run_case otel-qa-base "$base_image" | tail -1); then
+  exit 1
+fi
+echo "baseline_warning_count=$baseline_warning_count"
 
 cat >"$workdir/Dockerfile" <<'DOCKERFILE'
 ARG BASE_IMAGE
@@ -74,7 +77,10 @@ else:
 PY
 DOCKERFILE
 docker build --build-arg BASE_IMAGE="$base_image" -t otel-qa-guarded "$workdir" >/dev/null
-echo "guarded_warning_count=$(run_case otel-qa-guarded otel-qa-guarded | tail -1)"
+if ! guarded_warning_count=$(run_case otel-qa-guarded otel-qa-guarded | tail -1); then
+  exit 1
+fi
+echo "guarded_warning_count=$guarded_warning_count"
 
 for log in "$workdir"/*.log; do
   grep -E "^.*(Setting attribute on ended span|Traceback|ERROR).*" "$log" | sed -E 's/(Authorization|api_key|token|prompt|messages)[^ ]*/[redacted]/Ig' | head -20 || true
