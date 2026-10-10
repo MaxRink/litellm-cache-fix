@@ -69,6 +69,7 @@ run_case() {
     docker logs "$name" >&2 || true
     return 1
   fi
+  sed -n '1,30p' "$workdir/$name.metrics" | sed -E 's/(Authorization|api_key|token|prompt|messages)[^ ]*/[redacted]/Ig' >&2
   sleep 2
   docker logs "$name" >"$workdir/$name.log" 2>&1 || true
   local warning_count
