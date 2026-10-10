@@ -143,6 +143,8 @@ run_case() {
   runtime_sha=$(docker exec "$name" python -c 'import hashlib, importlib.util; s=importlib.util.find_spec("litellm.integrations.opentelemetry"); p=s.origin; print(hashlib.sha256(open(p,"rb").read()).hexdigest())')
   echo "runtime_otel_path=$(docker exec "$name" python -c 'import importlib.util; print(importlib.util.find_spec("litellm.integrations.opentelemetry").origin)')" >&2
   echo "runtime_otel_sha256=$runtime_sha" >&2
+  echo "runtime_otel_logger_path=$(docker exec "$name" python -c 'import importlib.util; print(importlib.util.find_spec("litellm.integrations.otel.logger").origin)')" >&2
+  echo "runtime_otel_logger_sha256=$(docker exec "$name" python -c 'import hashlib, importlib.util; p=importlib.util.find_spec("litellm.integrations.otel.logger").origin; print(hashlib.sha256(open(p,"rb").read()).hexdigest())')" >&2
   if [[ "$name" == otel-qa-base && "$runtime_sha" != a0b304266e1d9a516e29a24e47ad340385525abd064ef3cda12e17a84121703d ]]; then
     echo "unexpected_base_runtime_sha=$runtime_sha" >&2
     return 1
