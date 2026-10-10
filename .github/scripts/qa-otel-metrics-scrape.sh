@@ -36,8 +36,12 @@ run_case() {
     fi
     sleep 1
   done
-  docker exec "$name" python -c 'import urllib.request; r=urllib.request.urlopen("http://127.0.0.1:4000/metrics", timeout=5); body=r.read(); assert r.status == 200 and body, r.status' \
-    >/dev/null
+  if ! docker exec "$name" python -c 'import urllib.request; req=urllib.request.Request("http://127.0.0.1:4000/metrics", headers={"Authorization":"Bearer qa-master"}); r=urllib.request.urlopen(req, timeout=5); body=r.read(); assert r.status == 200 and body, r.status' \
+    >/dev/null; then
+    echo "metrics_scrape_failed=$name" >&2
+    docker logs "$name" >&2 || true
+    return 1
+  fi
   sleep 2
   docker logs "$name" >"$workdir/$name.log" 2>&1 || true
   local warning_count
