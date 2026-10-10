@@ -90,6 +90,22 @@ for root in sys.path:
         break
 else:
     raise SystemExit("installed OpenTelemetry SDK source not found")
+
+print("OTEL_SOURCE_IDENTITY")
+try:
+    from importlib.metadata import version
+    for package in ("opentelemetry-api", "opentelemetry-sdk", "opentelemetry-instrumentation-asgi", "opentelemetry-instrumentation-fastapi"):
+        try:
+            print(f"{package}={version(package)}")
+        except Exception:
+            pass
+except Exception:
+    pass
+for root in sys.path:
+    for path in sorted((Path(root) / "opentelemetry/instrumentation").rglob("*.py")):
+        for lineno, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
+            if ".set_attribute(" in line:
+                print(f"OTEL_SET_ATTRIBUTE_SOURCE {path}:{lineno}")
 PY
 DOCKERFILE
 docker build --build-arg BASE_IMAGE="$base_image" -t otel-qa-guarded "$workdir" >/dev/null
