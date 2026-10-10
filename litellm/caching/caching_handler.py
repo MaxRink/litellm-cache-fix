@@ -118,7 +118,7 @@ def _set_cache_key_if_available(
     cache_key: str | None,
 ) -> None:
     if cache_key is not None:
-        request_kwargs["cache_key"] = cache_key
+        request_kwargs["cache_key"] = cache_key  # rebind-ok: add derived key to request kwargs
 
 
 def _is_chat_completion_cached_dict(cached_result: dict) -> bool:
