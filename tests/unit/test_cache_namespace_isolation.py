@@ -31,6 +31,37 @@ def test_authenticated_callers_get_distinct_cache_namespaces_and_cannot_spoof_on
     assert "attacker" not in second_key
 
 
+def test_client_auth_shaped_metadata_cannot_override_server_auth_in_other_channel():
+    cache = Cache(type="local")
+    server_auth = UserAPIKeyAuth(api_key="hash-server", team_id="team-a", user_id="user-a")
+    other_auth = UserAPIKeyAuth(api_key="hash-other", team_id="team-a", user_id="user-b")
+    server_metadata = _request_metadata(server_auth)
+    other_metadata = _request_metadata(other_auth)
+    common = {"model": "fixture-model", "messages": [{"role": "user", "content": "fixture"}]}
+
+    # The first channel imitates a client JSON object; only the stamped model
+    # in the second channel is authoritative.
+    client_spoof = {"user_api_key_auth": {"api_key": "hash-other"}, "redis_namespace": "attacker"}
+    first_key = cache.get_cache_key(**common, metadata=client_spoof, litellm_metadata=server_metadata)
+    expected_key = cache.get_cache_key(**common, litellm_metadata=server_metadata)
+    other_key = cache.get_cache_key(**common, litellm_metadata=other_metadata)
+
+    assert first_key == expected_key
+    assert first_key != other_key
+
+
+def test_authenticated_namespace_keeps_field_boundaries_distinct():
+    cache = Cache(type="local")
+    first = UserAPIKeyAuth(api_key="ab", team_id="c", user_id=None)
+    second = UserAPIKeyAuth(api_key="a", team_id="bc", user_id=None)
+    common = {"model": "fixture-model", "messages": [{"role": "user", "content": "fixture"}]}
+
+    first_key = cache.get_cache_key(**common, litellm_metadata=_request_metadata(first))
+    second_key = cache.get_cache_key(**common, litellm_metadata=_request_metadata(second))
+
+    assert first_key != second_key
+
+
 def test_cache_key_ignores_otel_span_lifecycle_objects():
     cache = Cache(type="local")
     auth = UserAPIKeyAuth(api_key="hash-a", team_id="team-a", user_id="user-a")

@@ -554,23 +554,43 @@ class Cache:
             for source in (kwargs.get("metadata"), kwargs.get("litellm_metadata"))
             if isinstance(source, Mapping)
         )
-        # The proxy stamps this value after authentication.  Trust it only when
-        # the same server-stamped auth object is present; a caller-supplied
-        # ``metadata.redis_namespace`` must never let one caller select another
-        # caller's private response bucket.
+        # The proxy stamps a real UserAPIKeyAuth model after authentication. A
+        # client-provided dict/string with the same field name is not trusted.
         authenticated_namespace: str | None = None
+        authenticated_request: bool = False
+        try:
+            from litellm.proxy._types import UserAPIKeyAuth
+        except ImportError:
+            UserAPIKeyAuth = None  # type: ignore[assignment,misc]
         for metadata in metadata_sources:
             auth_object: object | None = metadata.get("user_api_key_auth")
-            stamped_namespace: object | None = metadata.get("user_api_key_cache_namespace")
-            if auth_object is not None and isinstance(stamped_namespace, str):
-                authenticated_namespace = stamped_namespace
+            if UserAPIKeyAuth is not None and isinstance(auth_object, UserAPIKeyAuth):
+                authenticated_request = True
+                identity_fields = {
+                    "api_key": getattr(auth_object, "api_key", None),
+                    "team_id": getattr(auth_object, "team_id", None),
+                    "project_id": getattr(auth_object, "project_id", None),
+                    "org_id": getattr(auth_object, "org_id", None),
+                    "user_id": getattr(auth_object, "user_id", None),
+                    "end_user_id": getattr(auth_object, "end_user_id", None),
+                    "user_role": getattr(auth_object, "user_role", None),
+                }
+                identity = json.dumps(identity_fields, sort_keys=True, default=str, separators=(",", ":"))
+                authenticated_namespace = "caller:" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:32]
                 break
-        namespace: Final = (
-            authenticated_namespace
-            or dynamic_cache_control.get("namespace")
-            or next((m.get("redis_namespace") for m in metadata_sources if m.get("redis_namespace")), None)
-            or self.namespace
-        )
+        if authenticated_request:
+            # Never let request metadata select a bucket once the proxy has
+            # authenticated the caller. The operator namespace remains a stable
+            # outer prefix for fleet isolation.
+            namespace: Final = ":".join(
+                value for value in (self.namespace, authenticated_namespace) if isinstance(value, str) and value
+            )
+        else:
+            namespace = (
+                dynamic_cache_control.get("namespace")
+                or next((m.get("redis_namespace") for m in metadata_sources if m.get("redis_namespace")), None)
+                or self.namespace
+            )
         if namespace:
             hash_hex = f"{namespace}:{hash_hex}"
         verbose_logger.debug("Final hashed key: %s", hash_hex)
