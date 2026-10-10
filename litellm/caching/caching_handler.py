@@ -856,7 +856,7 @@ class LLMCachingHandler:
             cache_hit=cache_hit,
         )
 
-    async def _retrieve_from_cache(
+    async def _retrieve_from_cache(  # noqa: C901  # retrieval handles cache modes and caller isolation
         self, call_type: str, kwargs: dict[str, object], args: tuple[object, ...]
     ) -> object | None:
         """

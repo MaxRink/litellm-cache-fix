@@ -408,7 +408,7 @@ class Cache:
         )
         return "".join(f"{field}: {value}" for field, value in scope_values if value is not None)
 
-    def get_cache_key(
+    def get_cache_key(  # noqa: C901  # cache-key policy must preserve auth and legacy scopes
         self,
         **kwargs: object,  # kwargs-ok: dynamic request parameters are part of the cache key
     ) -> str | None:
@@ -1090,7 +1090,9 @@ class Cache:
             **kwargs,
         )
 
-    async def async_add_cache_pipeline(self, result, dynamic_cache_object: BaseCache | None = None, **kwargs):
+    async def async_add_cache_pipeline(  # noqa: C901  # bulk cache writes preserve per-entry fail-closed handling
+        self, result, dynamic_cache_object: BaseCache | None = None, **kwargs
+    ):
         """
         Async implementation of add_cache for Embedding calls
 
