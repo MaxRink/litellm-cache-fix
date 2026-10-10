@@ -23,7 +23,7 @@ def _load_helpers():
     cache = SimpleNamespace()
     namespace = {
         "Mapping": Mapping,
-        "hashlib": hashlib,
+        "hashlib": SimpleNamespace(sha256=hashlib.sha256),
         "json": json,
         "os": os,
         "time": SimpleNamespace(monotonic=lambda: 10.0),
@@ -132,7 +132,24 @@ def test_wrong_base_hash_is_rejected():
     base = SOURCE.with_name("base-d544-1227bd.caching.py")
     expected = "1227bd9292d28462e9db12946238dcc2f5caf20cd40ba9ebd504d27fa25c96e0"
     assert hashlib.sha256(base.read_bytes()).hexdigest() == expected
-    assert hashlib.sha256((base.read_bytes() + b"\n")).hexdigest() != expected
+    wrong = base.read_bytes() + b"\n"
+    assert hashlib.sha256(wrong).hexdigest() != expected
+
+    verifier = SOURCE.with_name("verify_base.py")
+    spec = __import__("importlib.util").util.spec_from_file_location("verify_base", verifier)
+    module = __import__("importlib.util").util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.verify(base, expected) is None
+    try:
+        module.verify(base, "0" * 64)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("wrong base hash was accepted")
+
+    dockerfile = SOURCE.with_name("Dockerfile").read_text()
+    assert "verify_base.py" in dockerfile
+    assert expected in verifier.read_text()
 
 
 def test_redaction_drops_sensitive_fields_and_keeps_no_raw_values():
@@ -148,3 +165,26 @@ def test_source_keeps_cache_return_and_gated_hook():
     assert 'if os.getenv("LITELLM_CACHE_KEY_DIAGNOSTIC") != "1":' in text
     assert "self._emit_cache_key_diagnostic(cache_key=hashed_cache_key, kwargs=kwargs)" in text
     assert "return hashed_cache_key" in text
+
+
+def test_get_cache_key_body_matches_base_except_diagnostic_call():
+    base_path = SOURCE.with_name("base-d544-1227bd.caching.py")
+    base_tree = ast.parse(base_path.read_text())
+    overlay_tree = ast.parse(SOURCE.read_text())
+
+    def method(tree, name):
+        cache = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "Cache")
+        return next(n for n in cache.body if isinstance(n, ast.FunctionDef) and n.name == name)
+
+    base_method = method(base_tree, "get_cache_key")
+    overlay_method = method(overlay_tree, "get_cache_key")
+    overlay_method.body = [
+        stmt for stmt in overlay_method.body
+        if not (
+            isinstance(stmt, ast.Expr)
+            and isinstance(stmt.value, ast.Call)
+            and isinstance(stmt.value.func, ast.Attribute)
+            and stmt.value.func.attr == "_emit_cache_key_diagnostic"
+        )
+    ]
+    assert ast.dump(overlay_method, include_attributes=False) == ast.dump(base_method, include_attributes=False)
