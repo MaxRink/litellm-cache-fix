@@ -964,7 +964,7 @@ class Cache:
         input: str,
         kwargs: dict,
         idx_in_result_data: int = 0,
-    ) -> tuple[str, dict, dict] | None:
+    ) -> tuple[str, dict, dict] | None:  # mutable-ok: returns mutable request data for cache writeback
         preset_cache_key: Final = self.get_cache_key(**{**kwargs, "input": input})
         kwargs["cache_key"] = preset_cache_key
         embedding_response: Final = result.data[idx_in_result_data]

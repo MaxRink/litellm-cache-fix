@@ -113,7 +113,10 @@ def _drop_logging_obj_from_kwargs(request_kwargs: dict[str, object]) -> dict[str
     return {k: v for k, v in request_kwargs.items() if k != "litellm_logging_obj"}
 
 
-def _set_cache_key_if_available(request_kwargs: dict[str, object], cache_key: str | None) -> None:
+def _set_cache_key_if_available(
+    request_kwargs: dict[str, object],  # mutable-ok: adds a derived cache key to request kwargs
+    cache_key: str | None,
+) -> None:
     if cache_key is not None:
         request_kwargs["cache_key"] = cache_key
 
@@ -457,7 +460,9 @@ class LLMCachingHandler:
             if new_kwargs.get("metadata") is None:
                 new_kwargs.pop("metadata", None)
             if new_kwargs.get("stream") is True and "cache_key" not in new_kwargs:
-                derived_cache_key = litellm.cache.get_cache_key(**cast(dict[str, object], new_kwargs))
+                derived_cache_key = litellm.cache.get_cache_key(
+                    **cast(dict[str, object], new_kwargs)  # cast-ok: dynamic request kwargs are string keyed
+                )
                 _set_cache_key_if_available(new_kwargs, derived_cache_key)
             self.request_kwargs = _drop_logging_obj_from_kwargs(new_kwargs)
             print_verbose("Checking Sync Cache")
@@ -866,7 +871,9 @@ class LLMCachingHandler:
         if new_kwargs.get("metadata") is None:
             new_kwargs.pop("metadata", None)
         if new_kwargs.get("stream") is True and "cache_key" not in new_kwargs:
-            derived_cache_key = litellm.cache.get_cache_key(**cast(dict[str, object], new_kwargs))
+            derived_cache_key = litellm.cache.get_cache_key(
+                **cast(dict[str, object], new_kwargs)  # cast-ok: dynamic request kwargs are string keyed
+            )
             _set_cache_key_if_available(new_kwargs, derived_cache_key)
         self.request_kwargs = _drop_logging_obj_from_kwargs(new_kwargs)
         cached_result: object | None = None
@@ -874,7 +881,9 @@ class LLMCachingHandler:
             new_kwargs["input"] = self.handle_kwargs_input_list_or_str(new_kwargs)
             tasks: Final[list[Awaitable[object]]] = []
             for idx, i in enumerate(new_kwargs["input"]):
-                preset_cache_key = litellm.cache.get_cache_key(**cast(dict[str, object], {**new_kwargs, "input": i}))
+                preset_cache_key = litellm.cache.get_cache_key(
+                    **cast(dict[str, object], {**new_kwargs, "input": i})  # cast-ok: embedding kwargs are string keyed
+                )
                 if preset_cache_key is None:
                     return None
                 tasks.append(
@@ -895,7 +904,9 @@ class LLMCachingHandler:
             request_kwargs: Final = new_kwargs.copy()
             request_cache_key: Final = _request_cache_key(request_kwargs)
             request_kwargs.pop("cache_key", None)
-            derived_cache_key = litellm.cache.get_cache_key(**cast(dict[str, object], request_kwargs))
+            derived_cache_key = litellm.cache.get_cache_key(
+                **cast(dict[str, object], request_kwargs)  # cast-ok: dynamic request kwargs are string keyed
+            )
             if request_cache_key is None and derived_cache_key is None:
                 self.preset_cache_key = None
                 return None
