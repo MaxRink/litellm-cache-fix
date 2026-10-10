@@ -518,17 +518,17 @@ jobs:
         run: uvx --from pytest==9.0.3 --with pyyaml==6.0.3 --with pydantic==2.13.4 pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_unit_passed_gate.py
 
       - name: test_e2e_changed_gate
-        run: uv run --no-sync pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_e2e_changed_gate.py tests/code_coverage_tests/test_e2e_idp_stack.py
+        run: uvx --from pytest==9.0.3 --with pyyaml==6.0.3 --with pydantic==2.13.4 pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_e2e_changed_gate.py tests/code_coverage_tests/test_e2e_idp_stack.py
 
       - name: test_e2e_metadata
         env:
           PYTHONPATH: tests/e2e
         run: |
           export LITELLM_MASTER_KEY="sk-$(openssl rand -hex 16)"
-          uv run --no-sync pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_e2e_metadata.py tests/code_coverage_tests/test_e2e_junit_report.py
+          uvx --from pytest==9.0.3 --with pyyaml==6.0.3 --with pydantic==2.13.4 pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_e2e_metadata.py tests/code_coverage_tests/test_e2e_junit_report.py
 
       - name: Check merge smoke harness
-        run: uv run --no-sync pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_merge_smoke.py
+        run: uvx --from pytest==9.0.3 --with pyyaml==6.0.3 --with pydantic==2.13.4 pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_merge_smoke.py
 
       - name: router_code_coverage
         run: uv run --no-sync python ./tests/code_coverage_tests/router_code_coverage.py
@@ -597,7 +597,7 @@ jobs:
         run: uv run --no-sync python ./tests/code_coverage_tests/check_no_publicly_known_master_key.py
 
       - name: test_check_no_publicly_known_master_key
-        run: uv run --no-sync pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_check_no_publicly_known_master_key.py
+        run: uvx --from pytest==9.0.3 --with pyyaml==6.0.3 --with pydantic==2.13.4 pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_check_no_publicly_known_master_key.py
 
       - name: check_unbounded_in_lists (fails on findings not in the baseline)
         run: uv run --no-sync python ./tests/code_coverage_tests/check_unbounded_in_lists.py
