@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import hashlib
 import json
 import re
 import time
@@ -1302,6 +1303,27 @@ def redact_credential_headers(headers: Mapping[str, str]) -> Mapping[str, str]:
 
 class LiteLLMProxyRequestSetup:
     @staticmethod
+    def get_cache_namespace_for_authenticated_key(user_api_key_dict: UserAPIKeyAuth) -> str:
+        """Return an opaque, server-derived cache namespace for an authenticated caller.
+
+        Cache namespaces must not be selected by request metadata.  The proxy has
+        already resolved this object from the bearer token, so the stable identity
+        is safe to derive here without putting a key, alias, or user data in Redis.
+        Include the enclosing scopes so a key reused across teams/projects cannot
+        share private responses accidentally.
+        """
+        identity_parts = (
+            getattr(user_api_key_dict, "api_key", None),
+            getattr(user_api_key_dict, "team_id", None),
+            getattr(user_api_key_dict, "project_id", None),
+            getattr(user_api_key_dict, "org_id", None),
+            getattr(user_api_key_dict, "user_id", None),
+            getattr(user_api_key_dict, "end_user_id", None),
+        )
+        identity = "|".join(str(value) for value in identity_parts if value is not None)
+        return "caller:" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:32]
+
+    @staticmethod
     def _get_timeout_from_request(headers: dict) -> float | None:
         """
         Workaround for client request from Vercel's AI SDK.
@@ -1735,6 +1757,12 @@ class LiteLLMProxyRequestSetup:
         )
         data[_metadata_variable_name].update(user_api_key_logged_metadata)
         data[_metadata_variable_name]["user_api_key"] = LiteLLMProxyRequestSetup.get_logged_api_key(user_api_key_dict)
+        # This is written after client metadata is merged and is therefore a
+        # server-derived value.  Cache code only trusts it alongside the stamped
+        # auth object; ``redis_namespace`` remains a caller-facing legacy option.
+        data[_metadata_variable_name]["user_api_key_cache_namespace"] = (
+            LiteLLMProxyRequestSetup.get_cache_namespace_for_authenticated_key(user_api_key_dict)
+        )
 
         # Key-owned agent_id for spend attribution; keep existing (e.g. from header) if key has none
         _key_agent_id: Final = getattr(user_api_key_dict, "agent_id", None)

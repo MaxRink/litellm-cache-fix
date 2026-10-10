@@ -396,7 +396,9 @@ class Cache:
         is_semantic_cache: Final = self._is_semantic_cache()
         scope_excluded_params: Final = self._SEMANTIC_CACHE_SCOPE_EXCLUDED_PARAMS if is_semantic_cache else frozenset()
         for param in kwargs:
-            if param in scope_excluded_params:
+            # Span objects are request lifecycle state, not model input.  They
+            # differ between lookup and store and must never perturb a key.
+            if param in scope_excluded_params or param in {"parent_otel_span", "litellm_parent_otel_span"}:
                 continue
             if param in combined_kwargs:
                 param_value: str | None = self._get_param_value(param, kwargs)
@@ -547,8 +549,28 @@ class Cache:
             str: The final hashed cache key with the redis namespace.
         """
         dynamic_cache_control: Final[DynamicCacheControl] = kwargs.get("cache", {})
-        metadata: Final = kwargs.get("metadata") or {}
-        namespace: Final = dynamic_cache_control.get("namespace") or metadata.get("redis_namespace") or self.namespace
+        metadata_sources: Final = tuple(
+            source
+            for source in (kwargs.get("metadata"), kwargs.get("litellm_metadata"))
+            if isinstance(source, Mapping)
+        )
+        # The proxy stamps this value after authentication.  Trust it only when
+        # the same server-stamped auth object is present; a caller-supplied
+        # ``metadata.redis_namespace`` must never let one caller select another
+        # caller's private response bucket.
+        authenticated_namespace: str | None = None
+        for metadata in metadata_sources:
+            auth_object: object | None = metadata.get("user_api_key_auth")
+            stamped_namespace: object | None = metadata.get("user_api_key_cache_namespace")
+            if auth_object is not None and isinstance(stamped_namespace, str):
+                authenticated_namespace = stamped_namespace
+                break
+        namespace: Final = (
+            authenticated_namespace
+            or dynamic_cache_control.get("namespace")
+            or next((m.get("redis_namespace") for m in metadata_sources if m.get("redis_namespace")), None)
+            or self.namespace
+        )
         if namespace:
             hash_hex = f"{namespace}:{hash_hex}"
         verbose_logger.debug("Final hashed key: %s", hash_hex)
