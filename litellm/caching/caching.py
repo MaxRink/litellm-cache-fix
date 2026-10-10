@@ -9,6 +9,7 @@
 
 import ast
 import hashlib
+import hmac
 import json
 import logging
 import time
@@ -618,7 +619,10 @@ class Cache:
                     "user_role": getattr(auth_object, "user_role", None),
                 }
                 identity = json.dumps(identity_fields, sort_keys=True, default=str, separators=(",", ":"))
-                return "caller:" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:32]
+                caller_digest = hmac.new(
+                    b"litellm-cache-namespace-v1", identity.encode("utf-8"), hashlib.sha256
+                ).hexdigest()
+                return "caller:" + caller_digest[:32]
         return None
 
     def generate_streaming_content(self, content):
