@@ -350,11 +350,25 @@ class ContextCachingEndpoints(VertexBase):
             )
             return messages, optional_params, None
 
-        tools_value: object = cast(object, optional_params.pop("tools", None))
-        tools: Final[Tools | None] = cast(Tools, tools_value) if isinstance(tools_value, dict) else None
-        tool_choice_value: object = cast(object, optional_params.pop("tool_choice", None))
+        tools_value: Final[object] = cast(  # cast-ok: provider options are dynamically typed
+            object, optional_params.pop("tools", None)
+        )
+        tools: Final[Tools | None] = (
+            cast(  # cast-ok: runtime dictionary check precedes provider conversion
+                Tools, tools_value
+            )
+            if isinstance(tools_value, dict)
+            else None
+        )
+        tool_choice_value: Final[object] = cast(  # cast-ok: provider options are dynamically typed
+            object, optional_params.pop("tool_choice", None)
+        )
         tool_choice: Final[ToolConfig | None] = (
-            cast(ToolConfig, tool_choice_value) if isinstance(tool_choice_value, dict) else None
+            cast(  # cast-ok: runtime dictionary check precedes provider conversion
+                ToolConfig, tool_choice_value
+            )
+            if isinstance(tool_choice_value, dict)
+            else None
         )
 
         ## AUTHORIZATION ##
@@ -398,7 +412,13 @@ class ContextCachingEndpoints(VertexBase):
         }
         generated_cache_key: Final = local_cache_obj.get_cache_key(**cache_key_kwargs)
         if not generated_cache_key:
-            _restore_context_options(cast(dict[str, object], optional_params), tools, tool_choice)
+            _restore_context_options(
+                cast(  # cast-ok: optional parameters are the mutable provider payload
+                    dict[str, object], optional_params
+                ),
+                tools,
+                tool_choice,
+            )
             return messages, optional_params, None
         google_cache_name: Final = self.check_cache(
             cache_key=generated_cache_key,
@@ -523,11 +543,25 @@ class ContextCachingEndpoints(VertexBase):
             )
             return messages, optional_params, None
 
-        tools_value: object = cast(object, optional_params.pop("tools", None))
-        tools: Final[Tools | None] = cast(Tools, tools_value) if isinstance(tools_value, dict) else None
-        tool_choice_value: object = cast(object, optional_params.pop("tool_choice", None))
+        tools_value: Final[object] = cast(  # cast-ok: provider options are dynamically typed
+            object, optional_params.pop("tools", None)
+        )
+        tools: Final[Tools | None] = (
+            cast(  # cast-ok: runtime dictionary check precedes provider conversion
+                Tools, tools_value
+            )
+            if isinstance(tools_value, dict)
+            else None
+        )
+        tool_choice_value: Final[object] = cast(  # cast-ok: provider options are dynamically typed
+            object, optional_params.pop("tool_choice", None)
+        )
         tool_choice: Final[ToolConfig | None] = (
-            cast(ToolConfig, tool_choice_value) if isinstance(tool_choice_value, dict) else None
+            cast(  # cast-ok: runtime dictionary check precedes provider conversion
+                ToolConfig, tool_choice_value
+            )
+            if isinstance(tool_choice_value, dict)
+            else None
         )
 
         ## AUTHORIZATION ##
@@ -566,7 +600,13 @@ class ContextCachingEndpoints(VertexBase):
         }
         generated_cache_key: Final = local_cache_obj.get_cache_key(**cache_key_kwargs)
         if not generated_cache_key:
-            _restore_context_options(cast(dict[str, object], optional_params), tools, tool_choice)
+            _restore_context_options(
+                cast(  # cast-ok: optional parameters are the mutable provider payload
+                    dict[str, object], optional_params
+                ),
+                tools,
+                tool_choice,
+            )
             return messages, optional_params, None
         google_cache_name: Final = await self.async_check_cache(
             cache_key=generated_cache_key,

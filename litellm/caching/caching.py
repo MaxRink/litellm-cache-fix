@@ -376,7 +376,15 @@ class Cache:
 
     def _get_semantic_cache_tenant_scope(self, kwargs: Mapping[str, object]) -> str:
         def as_mapping(value: object) -> Mapping[str, object]:
-            return cast(Mapping[str, object], value) if isinstance(value, Mapping) else cast(Mapping[str, object], {})
+            return (
+                cast(  # cast-ok: runtime Mapping check establishes the value shape
+                    Mapping[str, object], value
+                )
+                if isinstance(value, Mapping)
+                else cast(  # cast-ok: empty mapping is the typed fallback
+                    Mapping[str, object], {}
+                )
+            )
 
         litellm_params: Final = as_mapping(kwargs.get("litellm_params"))
         metadata_sources: Final[tuple[Mapping[str, object], ...]] = tuple(
@@ -394,7 +402,15 @@ class Cache:
         """Return a stable, non-secret scope for authenticated proxy callers."""
 
         def as_mapping(value: object) -> Mapping[str, object]:
-            return cast(Mapping[str, object], value) if isinstance(value, Mapping) else cast(Mapping[str, object], {})
+            return (
+                cast(  # cast-ok: runtime Mapping check establishes the value shape
+                    Mapping[str, object], value
+                )
+                if isinstance(value, Mapping)
+                else cast(  # cast-ok: empty mapping is the typed fallback
+                    Mapping[str, object], {}
+                )
+            )
 
         litellm_params: Final = as_mapping(kwargs.get("litellm_params"))  # pyright: ignore[reportArgumentType, reportUnknownArgumentType]  # proxy kwargs are dynamically typed
         metadata_sources: Final[tuple[Mapping[str, object], ...]] = (
@@ -427,7 +443,7 @@ class Cache:
         Returns:
             str: The cache key generated from the arguments, or None if no cache key could be generated.
         """
-        cache_key = ""
+        cache_key = ""  # rebind-ok: cache material is accumulated deliberately
         authenticated_caller, authenticated_namespace = self._get_authenticated_cache_namespace(**kwargs)
         if authenticated_caller and authenticated_namespace is None:
             # An authenticated request without a stable server-side identity must
@@ -443,10 +459,13 @@ class Cache:
             return preset_cache_key
 
         is_semantic_cache: Final = self._is_semantic_cache()
-        cache_key += self._get_request_cache_key_material(kwargs, is_semantic_cache)
+        cache_key += (  # rebind-ok: cache material is accumulated deliberately
+            self._get_request_cache_key_material(kwargs, is_semantic_cache)
+        )
 
-        hashed_cache_key = Cache._get_hashed_cache_key(cache_key)
-        hashed_cache_key = self._add_namespace_to_cache_key(hashed_cache_key, **kwargs)
+        hashed_cache_key = Cache._get_hashed_cache_key(cache_key)  # rebind-ok: namespace is applied in the next step
+        namespaced_cache_key: Final = self._add_namespace_to_cache_key(hashed_cache_key, **kwargs)
+        hashed_cache_key = namespaced_cache_key  # rebind-ok: namespace enrichment
         if hashed_cache_key is None:
             return None
         verbose_logger.debug(
@@ -463,7 +482,7 @@ class Cache:
     def _get_request_cache_key_material(self, kwargs: Mapping[str, object], is_semantic_cache: bool) -> str:
         combined_kwargs: Final = ModelParamHelper.get_all_llm_api_params()
         scope_excluded_params: Final = self._SEMANTIC_CACHE_SCOPE_EXCLUDED_PARAMS if is_semantic_cache else frozenset()
-        cache_key = ""
+        cache_key = ""  # rebind-ok: cache material is accumulated deliberately
         for param in kwargs:
             if param in scope_excluded_params:
                 continue
@@ -479,9 +498,13 @@ class Cache:
                 if optional_param_value is not None:
                     cache_key += f"{param}: {optional_param_value}"
         if is_semantic_cache:
-            cache_key += self._get_semantic_cache_tenant_scope(kwargs)
+            cache_key += self._get_semantic_cache_tenant_scope(  # rebind-ok: cache material is accumulated deliberately
+                kwargs
+            )
         else:
-            cache_key += self._get_proxy_cache_scope(kwargs)
+            cache_key += self._get_proxy_cache_scope(  # rebind-ok: cache material is accumulated deliberately
+                kwargs
+            )
         return cache_key
 
     def _get_param_value(
@@ -496,7 +519,7 @@ class Cache:
             return self._get_model_param_value(kwargs)
         elif param == "file":
             return self._get_file_param_value(kwargs)
-        value = kwargs.get(param)
+        value = kwargs.get(param)  # rebind-ok: local value is narrowed below
         if value is None:
             return None
         return value if isinstance(value, str) else str(value)
@@ -511,7 +534,15 @@ class Cache:
         """
 
         def as_mapping(value: object) -> Mapping[str, object]:
-            return cast(Mapping[str, object], value) if isinstance(value, Mapping) else cast(Mapping[str, object], {})
+            return (
+                cast(  # cast-ok: runtime Mapping check establishes the value shape
+                    Mapping[str, object], value
+                )
+                if isinstance(value, Mapping)
+                else cast(  # cast-ok: empty mapping is the typed fallback
+                    Mapping[str, object], {}
+                )
+            )
 
         litellm_params: Final = as_mapping(kwargs.get("litellm_params"))
         metadata_sources: Final[tuple[Mapping[str, object], ...]] = (
@@ -527,7 +558,7 @@ class Cache:
         caching_group: Final = next(
             (group for source in metadata_sources if (group := self._get_caching_group(source, model_group))), None
         )
-        model_value = kwargs.get("model")
+        model_value = kwargs.get("model")  # rebind-ok: dynamic model value is narrowed below
         if isinstance(model_value, str):
             return caching_group or model_group or model_value
         if caching_group is not None:
@@ -537,25 +568,37 @@ class Cache:
         raise KeyError("model")
 
     def _get_caching_group(self, metadata: Mapping[str, object], model_group: str | None) -> str | None:
-        caching_groups_value = metadata.get("caching_groups")
+        caching_groups_value = metadata.get("caching_groups")  # rebind-ok: dynamic metadata value is narrowed below
         if not isinstance(caching_groups_value, list):
             return None
-        caching_groups: list[object] = cast(list[object], caching_groups_value)
+        caching_groups: Final[list[object]] = list(caching_groups_value)  # mutable-ok: provider list
         for group in caching_groups:
             if isinstance(group, (list, tuple, set)) and model_group in group:
-                return str(cast(object, group))
+                return str(
+                    cast(  # cast-ok: group was narrowed to a supported sequence
+                        object, group
+                    )
+                )
         return None
 
     def _get_file_param_value(self, kwargs: Mapping[str, object]) -> str | None:
         """Handles getting the value for the ``file`` cache parameter."""
 
         def as_mapping(value: object) -> Mapping[str, object]:
-            return cast(Mapping[str, object], value) if isinstance(value, Mapping) else cast(Mapping[str, object], {})
+            return (
+                cast(  # cast-ok: runtime Mapping check establishes the value shape
+                    Mapping[str, object], value
+                )
+                if isinstance(value, Mapping)
+                else cast(  # cast-ok: empty mapping is the typed fallback
+                    Mapping[str, object], {}
+                )
+            )
 
-        file_value = kwargs.get("file")
-        metadata = as_mapping(kwargs.get("metadata"))
-        litellm_params = as_mapping(kwargs.get("litellm_params"))
-        candidates = (
+        file_value = kwargs.get("file")  # rebind-ok: local value is intentionally selected from dynamic kwargs
+        metadata = as_mapping(kwargs.get("metadata"))  # rebind-ok: local metadata is intentionally derived from kwargs
+        litellm_params: Final = as_mapping(kwargs.get("litellm_params"))
+        candidates = (  # rebind-ok: candidate values are assembled once for ordered fallback
             metadata.get("file_checksum"),
             getattr(file_value, "name", None),
             metadata.get("file_name"),
