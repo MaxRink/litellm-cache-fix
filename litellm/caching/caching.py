@@ -351,6 +351,16 @@ class Cache:
     )
     _SEMANTIC_CACHE_END_USER_SCOPE_FIELD: Final = "user_api_key_end_user_id"
 
+    # Proxy authentication metadata is trusted server state, rather than a
+    # caller-controlled request parameter. Exact response caches must still
+    # keep responses from different proxy callers separate.
+    _PROXY_CACHE_SCOPE_FIELDS: tuple[str, ...] = (
+        "user_api_key_hash",
+        "user_api_key_user_id",
+        "user_api_key_team_id",
+        "user_api_key_org_id",
+    )
+
     def _is_semantic_cache(self) -> bool:
         return self.type in (
             LiteLLMCacheType.REDIS_SEMANTIC,
@@ -374,7 +384,34 @@ class Cache:
         )
         return "".join(f"{field}: {value}" for field, value in scope_values if value is not None)
 
-    def get_cache_key(self, **kwargs: object) -> str | None:
+    def _get_proxy_cache_scope(self, kwargs: Mapping[str, object]) -> str:
+        """Return a stable, non-secret scope for authenticated proxy callers."""
+
+        def as_mapping(value: object) -> Mapping[str, object]:
+            return value if isinstance(value, Mapping) else {}
+
+        litellm_params: Final = as_mapping(kwargs.get("litellm_params"))  # pyright: ignore[reportArgumentType, reportUnknownArgumentType]  # proxy kwargs are dynamically typed
+        metadata_sources: Final[tuple[Mapping[str, object], ...]] = (
+            tuple(  # comprehension-ok: flatten trusted metadata containers
+                as_mapping(source.get(key))  # pyright: ignore[reportArgumentType, reportUnknownArgumentType]  # metadata containers are runtime mappings
+                for source in (kwargs, litellm_params)
+                for key in ("metadata", "litellm_metadata")
+            )
+        )
+
+        scope_values: Final[tuple[tuple[str, object | None], ...]] = tuple(  # pyright: ignore[reportAssignmentType, reportUnknownVariableType]  # explicit cache scope tuple
+            (
+                field,
+                next((source[field] for source in metadata_sources if source.get(field) is not None), None),  # pyright: ignore[reportUnknownVariableType]  # guarded mapping lookup
+            )
+            for field in self._PROXY_CACHE_SCOPE_FIELDS
+        )
+        return "".join(f"{field}: {value}" for field, value in scope_values if value is not None)
+
+    def get_cache_key(
+        self,
+        **kwargs: object,  # kwargs-ok: dynamic request parameters are part of the cache key
+    ) -> str | None:
         """
         Get the cache key for the given arguments.
 
@@ -387,27 +424,23 @@ class Cache:
         cache_key = ""
         authenticated_caller, authenticated_namespace = self._get_authenticated_cache_namespace(**kwargs)
         if authenticated_caller and authenticated_namespace is None:
+            # An authenticated request without a stable server-side identity must
+            # never fall back to a shared or client-selected cache key.
             return None
         # verbose_logger.debug("\nGetting Cache key. Kwargs: %s", kwargs)
 
         preset_cache_key: Final = self.get_preset_cache_key_from_kwargs(**kwargs)
         if preset_cache_key is not None:
-            if authenticated_caller and authenticated_namespace is not None:
-                namespace_prefix: Final = ":".join(
-                    value for value in (self.namespace, authenticated_namespace) if isinstance(value, str) and value
-                )
-                if not preset_cache_key.startswith(f"{namespace_prefix}:"):
-                    return self._add_namespace_to_cache_key(self._get_hashed_cache_key(preset_cache_key), **kwargs)
             verbose_logger.debug("\nReturning preset cache key: %s", preset_cache_key)
+            if authenticated_caller:
+                return self._add_namespace_to_cache_key(preset_cache_key, **kwargs)
             return preset_cache_key
 
         combined_kwargs: Final = ModelParamHelper.get_all_llm_api_params()
         is_semantic_cache: Final = self._is_semantic_cache()
         scope_excluded_params: Final = self._SEMANTIC_CACHE_SCOPE_EXCLUDED_PARAMS if is_semantic_cache else frozenset()
         for param in kwargs:
-            # Span objects are request lifecycle state, not model input.  They
-            # differ between lookup and store and must never perturb a key.
-            if param in scope_excluded_params or param in {"parent_otel_span", "litellm_parent_otel_span"}:
+            if param in scope_excluded_params:
                 continue
             if param in combined_kwargs:
                 param_value: str | None = self._get_param_value(param, kwargs)
@@ -417,11 +450,15 @@ class Cache:
                 if litellm.enable_caching_on_provider_specific_optional_params is True:  # feature flagged for now
                     if kwargs[param] is None:
                         continue  # ignore None params
-                    param_value = kwargs[param]
-                    cache_key += f"{param}: {param_value}"
+                    optional_param_value: object = kwargs[param]
+                    cache_key += f"{param}: {optional_param_value}"
 
         if is_semantic_cache:
             cache_key += self._get_semantic_cache_tenant_scope(kwargs)
+        else:
+            cache_key += self._get_proxy_cache_scope(  # rebind-ok: append authenticated proxy scope to the cache key
+                cast(Mapping[str, object], kwargs)  # cast-ok: cache kwargs are string-keyed
+            )  # noqa: LIT010  # preserve the existing cache-key assembly path
 
         hashed_cache_key = Cache._get_hashed_cache_key(cache_key)
         hashed_cache_key = self._add_namespace_to_cache_key(hashed_cache_key, **kwargs)
@@ -437,26 +474,6 @@ class Cache:
         kwargs_for_preset: Final = {k: v for k, v in kwargs.items() if k != "preset_cache_key"}
         self._set_preset_cache_key_in_kwargs(preset_cache_key=hashed_cache_key, **kwargs_for_preset)
         return hashed_cache_key
-
-    def get_cache_key_from_explicit_key(
-        self,
-        explicit_key: str,
-        **kwargs: object,  # kwargs-ok: proxy cache context is keyword-only and extensible
-    ) -> str:
-        """Normalize an explicit request key before proxy cache lookup/storage.
-
-        Explicit keys are caller-controlled, so authenticated proxy requests
-        must still receive the server-derived caller namespace.  Unauthenticated
-        SDK callers retain the historical explicit-key behavior.
-        """
-        if not isinstance(explicit_key, str):
-            raise TypeError("cache_key must be a string")
-        authenticated_caller, authenticated_namespace = self._get_authenticated_cache_namespace(**kwargs)
-        if not authenticated_caller:
-            return explicit_key
-        if authenticated_namespace is None:
-            return None
-        return self._add_namespace_to_cache_key(self._get_hashed_cache_key(explicit_key), **kwargs)
 
     def _get_param_value(
         self,
@@ -568,7 +585,11 @@ class Cache:
         verbose_logger.debug("Hashed cache key (SHA-256): %s", hash_hex)
         return hash_hex
 
-    def _add_namespace_to_cache_key(self, hash_hex: str, **kwargs) -> str | None:
+    def _add_namespace_to_cache_key(
+        self,
+        hash_hex: str,
+        **kwargs: object,  # kwargs-ok: cache request metadata is extensible
+    ) -> str | None:
         """
         If a redis namespace is provided, add it to the cache key
 
@@ -579,26 +600,51 @@ class Cache:
         Returns:
             str: The final hashed cache key with the redis namespace.
         """
-        dynamic_cache_control: Final[DynamicCacheControl] = kwargs.get("cache", {})
-        metadata_sources: Final = tuple(
-            source for source in (kwargs.get("metadata"), kwargs.get("litellm_metadata")) if isinstance(source, Mapping)
+        cache_value: Final = kwargs.get("cache")
+        dynamic_cache_control: Final[Mapping[str, object]] = (
+            cast(Mapping[str, object], cache_value)  # cast-ok: runtime Mapping check establishes the cache shape
+            if isinstance(cache_value, Mapping)
+            else {}
+        )
+        litellm_params_value: Final = kwargs.get("litellm_params")
+        litellm_params: Final[Mapping[str, object]] = (
+            cast(  # cast-ok: runtime Mapping check establishes metadata shape
+                Mapping[str, object], litellm_params_value
+            )
+            if isinstance(litellm_params_value, Mapping)
+            else {}
+        )
+        metadata_sources: Final[tuple[Mapping[str, object], ...]] = tuple(
+            cast(Mapping[str, object], source)  # cast-ok: runtime Mapping check establishes metadata shape
+            for source in (
+                kwargs.get("metadata"),
+                kwargs.get("litellm_metadata"),
+                litellm_params.get("metadata"),
+                litellm_params.get("litellm_metadata"),
+            )
+            if isinstance(source, Mapping)
         )
         authenticated_caller, authenticated_namespace = self._get_authenticated_cache_namespace(**kwargs)
         if authenticated_caller and authenticated_namespace is None:
             return None
-        authenticated_request: Final = authenticated_caller
-        if authenticated_request:
-            namespace: Final = ":".join(
-                value for value in (self.namespace, authenticated_namespace) if isinstance(value, str) and value
-            )
-        else:
-            namespace = (
-                dynamic_cache_control.get("namespace")
-                or next((m.get("redis_namespace") for m in metadata_sources if m.get("redis_namespace")), None)
-                or self.namespace
-            )
+        requested_namespace_value: Final = dynamic_cache_control.get("namespace")
+        requested_namespace: Final[str | None] = (
+            requested_namespace_value if isinstance(requested_namespace_value, str) else None
+        )
+        metadata_namespace_value: Final = next(
+            iter(metadata_sources),
+            cast(Mapping[str, object], {}),  # cast-ok: empty mapping is the typed fallback
+        ).get("redis_namespace")
+        metadata_namespace: Final[str | None] = (
+            metadata_namespace_value if isinstance(metadata_namespace_value, str) else None
+        )
+        namespace: Final[str | None] = (
+            ":".join(value for value in (self.namespace, authenticated_namespace) if isinstance(value, str) and value)
+            if authenticated_namespace is not None
+            else requested_namespace or metadata_namespace or self.namespace
+        )
         if namespace:
-            prefix = f"{namespace}:"  # rebind-ok: namespace prefix is final cache key representation
+            prefix = f"{namespace}:"  # rebind-ok: namespace prefix is final key representation
             if not hash_hex.startswith(prefix):
                 hash_hex = f"{prefix}{hash_hex}"  # rebind-ok: namespace prefix is the final cache key representation
         verbose_logger.debug("Final hashed key: %s", hash_hex)
@@ -606,34 +652,81 @@ class Cache:
 
     def _get_authenticated_cache_namespace(
         self,
-        **kwargs: object,  # kwargs-ok: metadata evolves with proxy request context
+        **kwargs: object,  # kwargs-ok: proxy metadata is dynamic
     ) -> tuple[bool, str | None]:
-        """Derive the opaque cache namespace from the server-authenticated key."""
-        metadata_sources: Final = tuple(
-            source for source in (kwargs.get("metadata"), kwargs.get("litellm_metadata")) if isinstance(source, Mapping)
+        """Return whether trusted auth metadata exists and its stable cache namespace.
+
+        ``UserAPIKeyAuth.token`` is the proxy's server-side hashed token identity.
+        API-key-only objects without it cannot be safely separated, so callers
+        must bypass cache reads and writes rather than use a shared fallback.
+        """
+        litellm_params_value: Final = kwargs.get("litellm_params")
+        litellm_params: Final[Mapping[str, object]] = (
+            cast(  # cast-ok: runtime mapping check precedes this cast
+                Mapping[str, object], litellm_params_value
+            )
+            if isinstance(litellm_params_value, Mapping)
+            else {}
+        )
+        metadata_sources: Final[tuple[Mapping[str, object], ...]] = tuple(
+            cast(  # cast-ok: source was filtered to Mapping
+                Mapping[str, object], source
+            )
+            for source in (
+                kwargs.get("metadata"),
+                kwargs.get("litellm_metadata"),
+                litellm_params.get("metadata"),
+                litellm_params.get("litellm_metadata"),
+            )
+            if isinstance(source, Mapping)
         )
         try:
             from litellm.proxy._types import UserAPIKeyAuth
         except ImportError:
             return False, None
+
         for metadata in metadata_sources:
             auth_object: object | None = metadata.get("user_api_key_auth")
-            if UserAPIKeyAuth is not None and isinstance(auth_object, UserAPIKeyAuth):
-                token = getattr(auth_object, "token", None)
-                if not isinstance(token, str) or not token:
-                    return True, None
-                identity_fields = {
-                    "api_key_hash": token,
-                    "team_id": getattr(auth_object, "team_id", None),
-                    "project_id": getattr(auth_object, "project_id", None),
-                    "org_id": getattr(auth_object, "org_id", None),
-                    "user_id": getattr(auth_object, "user_id", None),
-                    "end_user_id": getattr(auth_object, "end_user_id", None),
-                    "user_role": getattr(auth_object, "user_role", None),
-                }
-                identity = json.dumps(identity_fields, sort_keys=True, default=str, separators=(",", ":"))
-                return True, "caller:" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:32]
+            if not isinstance(auth_object, UserAPIKeyAuth):
+                continue
+            token = getattr(auth_object, "token", None)
+            if not isinstance(token, str) or not token:
+                return True, None
+            identity_fields = {
+                "api_key_hash": token,
+                "team_id": getattr(auth_object, "team_id", None),
+                "project_id": getattr(auth_object, "project_id", None),
+                "org_id": getattr(auth_object, "org_id", None),
+                "user_id": getattr(auth_object, "user_id", None),
+                "end_user_id": getattr(auth_object, "end_user_id", None),
+                "user_role": getattr(auth_object, "user_role", None),
+            }
+            identity = json.dumps(identity_fields, sort_keys=True, default=str, separators=(",", ":"))
+            return True, "caller:" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:32]
         return False, None
+
+    def _prepare_explicit_cache_key(
+        self,
+        explicit_key: object,
+        **kwargs: object,  # kwargs-ok: auth metadata scopes caller keys
+    ) -> str | None:
+        """Validate and scope a caller-provided cache key before backend access."""
+        if not isinstance(explicit_key, str):
+            return None
+        authenticated_caller, authenticated_namespace = self._get_authenticated_cache_namespace(**kwargs)
+        if not authenticated_caller:
+            return explicit_key
+        if authenticated_namespace is None:
+            return None
+        return self._add_namespace_to_cache_key(explicit_key, **kwargs)
+
+    def prepare_explicit_cache_key(
+        self,
+        explicit_key: object,
+        **kwargs: object,  # kwargs-ok: auth metadata scopes caller keys
+    ) -> str | None:
+        """Normalize a caller-provided key for integrations outside this class."""
+        return self._prepare_explicit_cache_key(explicit_key, **kwargs)
 
     def generate_streaming_content(self, content):
         chunk_size: Final = 5  # Adjust the chunk size as needed
@@ -726,11 +819,11 @@ class Cache:
                 return
             with response_cache_phase("get"):
                 if "cache_key" in kwargs:
-                    cache_key = self.get_cache_key_from_explicit_key(  # rebind-ok: normalize explicit caller key
+                    cache_key = self._prepare_explicit_cache_key(  # rebind-ok: normalize explicit caller key
                         kwargs["cache_key"], **kwargs
                     )
                 else:
-                    cache_key = self.get_cache_key(**kwargs)
+                    cache_key = self.get_cache_key(**kwargs)  # rebind-ok: derive caller key
                 if cache_key is not None:
                     cache_control_args: Final[DynamicCacheControl] = kwargs.get("cache", {})
                     max_age = cache_control_args.get("s-maxage") or cache_control_args.get("s-max-age") or float("inf")
@@ -761,11 +854,11 @@ class Cache:
 
             with response_cache_phase("get"):
                 if "cache_key" in kwargs:
-                    cache_key = self.get_cache_key_from_explicit_key(  # rebind-ok: normalize explicit caller key
+                    cache_key = self._prepare_explicit_cache_key(  # rebind-ok: normalize explicit caller key
                         kwargs["cache_key"], **kwargs
                     )
                 else:
-                    cache_key = self.get_cache_key(**kwargs)
+                    cache_key = self.get_cache_key(**kwargs)  # rebind-ok: derive caller key
                 if cache_key is not None:
                     cache_control_args: Final = kwargs.get("cache", {})
                     max_age: Final = cache_control_args.get(
@@ -785,24 +878,24 @@ class Cache:
         Common implementation across sync + async add_cache functions
         """
         if "cache_key" in kwargs:
-            cache_key = self.get_cache_key_from_explicit_key(  # rebind-ok: normalize explicit caller key
+            cache_key = self._prepare_explicit_cache_key(  # rebind-ok: normalize explicit caller key
                 kwargs["cache_key"], **kwargs
             )
         else:
             cache_key = self.get_cache_key(**kwargs)  # rebind-ok: derive caller key
         if cache_key is not None:
             if isinstance(result, BaseModel):
-                result = result.model_dump_json()
+                result = result.model_dump_json()  # rebind-ok: normalize cache payload
 
             ## DEFAULT TTL ##
             if self.ttl is not None:
-                kwargs["ttl"] = self.ttl
+                kwargs["ttl"] = self.ttl  # rebind-ok: apply cache TTL override
             ## Get Cache-Controls ##
             _cache_kwargs: Final = kwargs.get("cache", None)
             if isinstance(_cache_kwargs, dict):
                 for k, v in _cache_kwargs.items():
                     if k == "ttl":
-                        kwargs["ttl"] = v
+                        kwargs["ttl"] = v  # rebind-ok: apply request cache control
 
             cached_data: Final = {"timestamp": time.time(), "response": result}
             return cache_key, cached_data, kwargs
@@ -823,7 +916,9 @@ class Cache:
             if self.should_use_cache(**kwargs) is not True:
                 return
             with response_cache_phase("set"):
-                cache_entry = self._add_cache_logic(result=result, **kwargs)  # rebind-ok: cache entry is optional
+                cache_entry = self._add_cache_logic(  # rebind-ok: cache entry is optional
+                    result=result, **kwargs
+                )
                 if cache_entry is None:
                     return
                 cache_key, cached_data, kwargs = cache_entry
@@ -850,7 +945,9 @@ class Cache:
                     # high traffic - fill in results in memory and then flush
                     await self.batch_cache_write(result, **kwargs)
                 else:
-                    cache_entry = self._add_cache_logic(result=result, **kwargs)  # rebind-ok: cache entry is optional
+                    cache_entry = self._add_cache_logic(  # rebind-ok: cache entry is optional
+                        result=result, **kwargs
+                    )
                     if cache_entry is None:
                         return
                     cache_key, cached_data, kwargs = cache_entry
@@ -947,7 +1044,7 @@ class Cache:
         responses distribute it evenly (with remainder) so that summing all
         per-item values on retrieval reconstructs the original total.
         """
-        if result.usage is None or result.usage.prompt_tokens is None:
+        if result.usage is None:
             return None
 
         total: Final = result.usage.prompt_tokens
@@ -1023,7 +1120,7 @@ class Cache:
                         cache_entry = self.add_embedding_response_to_cache(result, i, kwargs, idx)
                         if cache_entry is None:
                             return
-                        cache_key, cached_data, kwargs = cache_entry
+                        cache_key, cached_data, kwargs = cache_entry  # rebind-ok: use normalized cache entry
                         cache_list.append((cache_key, cached_data))
                 elif isinstance(kwargs["input"], str):
                     cache_entry = self.add_embedding_response_to_cache(  # rebind-ok: embedding entry is optional
@@ -1031,7 +1128,7 @@ class Cache:
                     )
                     if cache_entry is None:
                         return
-                    cache_key, cached_data, kwargs = cache_entry  # rebind-ok: unpack optional embedding entry
+                    cache_key, cached_data, kwargs = cache_entry  # rebind-ok: use normalized cache entry
                     cache_list.append((cache_key, cached_data))
 
                 if dynamic_cache_object is not None:
@@ -1063,10 +1160,12 @@ class Cache:
         return False
 
     async def batch_cache_write(self, result, **kwargs):
-        cache_entry = self._add_cache_logic(result=result, **kwargs)  # rebind-ok: batch cache entry is optional
+        cache_entry = self._add_cache_logic(  # rebind-ok: batch cache entry is optional
+            result=result, **kwargs
+        )
         if cache_entry is None:
             return
-        cache_key, cached_data, kwargs = cache_entry
+        cache_key, cached_data, kwargs = cache_entry  # rebind-ok: use normalized cache entry
         await self.cache.batch_cache_write(cache_key, cached_data, **kwargs)
 
     async def ping(self):
