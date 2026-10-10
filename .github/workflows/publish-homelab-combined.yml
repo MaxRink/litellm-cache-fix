@@ -1,0 +1,22 @@
+name: Publish homelab combined LiteLLM image
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.homelab-combined
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/litellm-otel-cache-fix:f5a0a0d-guard1433

@@ -1,0 +1,11 @@
+FROM ghcr.io/maxrink/litellm-otel-fix-minimal@sha256:44eff3aa7741906e43ab2212e78239a7e557581f5a87b25810dd94c573fa1020
+LABEL org.opencontainers.image.source="https://github.com/BerriAI/litellm/pull/45694" \
+      org.opencontainers.image.revision="1433e00bcd8011d9463d331e22d2212633532a85" \
+      org.opencontainers.image.base.name="ghcr.io/maxrink/litellm-otel-fix-minimal" \
+      org.opencontainers.image.base.digest="sha256:44eff3aa7741906e43ab2212e78239a7e557581f5a87b25810dd94c573fa1020" \
+      org.opencontainers.image.licenses="MIT" \
+      com.maxrink.patch.opentelemetry.sha256="a0b304266e1d9a516e29a24e47ad340385525abd064ef3cda12e17a84121703d" \
+      com.maxrink.patch.cache.source="https://github.com/BerriAI/litellm/pull/45693" \
+      com.maxrink.patch.cache.revision="f5a0a0d223acb9b8ab6f4ef0210eaf4bb8c9c200"
+COPY litellm/integrations/opentelemetry.py /app/.venv/lib/python3.13/site-packages/litellm/integrations/opentelemetry.py
+COPY litellm/proxy/proxy_server.py /app/.venv/lib/python3.13/site-packages/litellm/proxy/proxy_server.py
