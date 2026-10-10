@@ -598,7 +598,7 @@ class Cache:
                 or self.namespace
             )
         if namespace:
-            prefix = f"{namespace}:"
+            prefix = f"{namespace}:"  # rebind-ok: namespace prefix is final cache key representation
             if not hash_hex.startswith(prefix):
                 hash_hex = f"{prefix}{hash_hex}"  # rebind-ok: namespace prefix is the final cache key representation
         verbose_logger.debug("Final hashed key: %s", hash_hex)
@@ -726,7 +726,9 @@ class Cache:
                 return
             with response_cache_phase("get"):
                 if "cache_key" in kwargs:
-                    cache_key = self.get_cache_key_from_explicit_key(kwargs["cache_key"], **kwargs)
+                    cache_key = self.get_cache_key_from_explicit_key(  # rebind-ok: normalize explicit caller key
+                        kwargs["cache_key"], **kwargs
+                    )
                 else:
                     cache_key = self.get_cache_key(**kwargs)
                 if cache_key is not None:
@@ -759,7 +761,9 @@ class Cache:
 
             with response_cache_phase("get"):
                 if "cache_key" in kwargs:
-                    cache_key = self.get_cache_key_from_explicit_key(kwargs["cache_key"], **kwargs)
+                    cache_key = self.get_cache_key_from_explicit_key(  # rebind-ok: normalize explicit caller key
+                        kwargs["cache_key"], **kwargs
+                    )
                 else:
                     cache_key = self.get_cache_key(**kwargs)
                 if cache_key is not None:
@@ -781,9 +785,11 @@ class Cache:
         Common implementation across sync + async add_cache functions
         """
         if "cache_key" in kwargs:
-            cache_key = self.get_cache_key_from_explicit_key(kwargs["cache_key"], **kwargs)
+            cache_key = self.get_cache_key_from_explicit_key(  # rebind-ok: normalize explicit caller key
+                kwargs["cache_key"], **kwargs
+            )
         else:
-            cache_key = self.get_cache_key(**kwargs)
+            cache_key = self.get_cache_key(**kwargs)  # rebind-ok: derive caller key
         if cache_key is not None:
             if isinstance(result, BaseModel):
                 result = result.model_dump_json()
@@ -817,7 +823,7 @@ class Cache:
             if self.should_use_cache(**kwargs) is not True:
                 return
             with response_cache_phase("set"):
-                cache_entry = self._add_cache_logic(result=result, **kwargs)
+                cache_entry = self._add_cache_logic(result=result, **kwargs)  # rebind-ok: cache entry is optional
                 if cache_entry is None:
                     return
                 cache_key, cached_data, kwargs = cache_entry
@@ -844,7 +850,7 @@ class Cache:
                     # high traffic - fill in results in memory and then flush
                     await self.batch_cache_write(result, **kwargs)
                 else:
-                    cache_entry = self._add_cache_logic(result=result, **kwargs)
+                    cache_entry = self._add_cache_logic(result=result, **kwargs)  # rebind-ok: cache entry is optional
                     if cache_entry is None:
                         return
                     cache_key, cached_data, kwargs = cache_entry
@@ -1020,10 +1026,12 @@ class Cache:
                         cache_key, cached_data, kwargs = cache_entry
                         cache_list.append((cache_key, cached_data))
                 elif isinstance(kwargs["input"], str):
-                    cache_entry = self.add_embedding_response_to_cache(result, kwargs["input"], kwargs)
+                    cache_entry = self.add_embedding_response_to_cache(  # rebind-ok: embedding entry is optional
+                        result, kwargs["input"], kwargs
+                    )
                     if cache_entry is None:
                         return
-                    cache_key, cached_data, kwargs = cache_entry
+                    cache_key, cached_data, kwargs = cache_entry  # rebind-ok: unpack optional embedding entry
                     cache_list.append((cache_key, cached_data))
 
                 if dynamic_cache_object is not None:
@@ -1055,7 +1063,7 @@ class Cache:
         return False
 
     async def batch_cache_write(self, result, **kwargs):
-        cache_entry = self._add_cache_logic(result=result, **kwargs)
+        cache_entry = self._add_cache_logic(result=result, **kwargs)  # rebind-ok: batch cache entry is optional
         if cache_entry is None:
             return
         cache_key, cached_data, kwargs = cache_entry
