@@ -1,9 +1,15 @@
 name: Publish homelab combined LiteLLM image
+
 on:
   workflow_dispatch:
+
 permissions:
   contents: read
   packages: write
+
+env:
+  IMAGE: ghcr.io/maxrink/litellm-otel-cache-fix:f5a0a0d-guard1433-validated
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -14,9 +20,17 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
+      - name: Build candidate locally
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile.homelab-combined
-          push: true
-          tags: ghcr.io/maxrink/litellm-otel-cache-fix:f5a0a0d-guard1433
+          load: true
+          push: false
+          tags: ${{ env.IMAGE }}
+      - name: Validate candidate before publish
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --entrypoint sh "$IMAGE" -c 'LITELLM_LOCAL_MODEL_COST_MAP=true python -c "import hashlib,litellm.integrations.opentelemetry as o,litellm.proxy.proxy_server as p; O=object.__new__(o.OpenTelemetry); calls=[]; F=type(\"F\",(),{\"is_recording\":lambda s:False,\"set_attribute\":lambda *a:calls.append(a)}); O.safe_set_attribute(F(),\"k\",\"v\"); assert not calls; T=type(\"T\",(),{\"is_recording\":lambda s:True,\"set_attribute\":lambda *a:calls.append(a)}); O.safe_set_attribute(T(),\"k\",\"v\"); assert calls; assert hashlib.sha256(open(o.__file__,\"rb\").read()).hexdigest()==\"a0b304266e1d9a516e29a24e47ad340385525abd064ef3cda12e17a84121703d\"; assert hashlib.sha256(open(p.__file__,\"rb\").read()).hexdigest()==\"eadab0971f24846071510df3e0eec0514b5049e234da7543f9a85e8ddaa44811\"; assert \"cache_responses=litellm.cache is not None\" in open(p.__file__).read(); print(\"candidate import, guard, cache-source validation passed\")"'
+      - name: Publish validated candidate
+        run: docker push "$IMAGE"
