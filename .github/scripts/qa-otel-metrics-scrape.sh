@@ -81,8 +81,11 @@ text = generate_latest(REGISTRY).decode()
 samples = [line for line in text.splitlines() if line.startswith("litellm_")]
 assert samples, "production Prometheus callback emitted no litellm samples"
 metadata_lines = sorted(line for line in text.splitlines() if line.startswith("# HELP ") or line.startswith("# TYPE "))
+stable_samples = sorted(line for line in samples if line.startswith("litellm_proxy_total_requests_metric") or line.startswith("litellm_requests_metric"))
+assert stable_samples, "production Prometheus callback emitted no stable request counter"
 print(f"fixture_metric_sample_count={len(samples)}")
 print(f"fixture_metric_metadata_sha256={hashlib.sha256(('\\n'.join(metadata_lines)).encode()).hexdigest()}")
+print(f"fixture_counter_values_sha256={hashlib.sha256(('\\n'.join(stable_samples)).encode()).hexdigest()}")
 print("fixture_team_metadata=true")
 PY
 
@@ -241,6 +244,13 @@ if [[ -z "$base_fixture_metadata" || "$base_fixture_metadata" != "$guarded_fixtu
   exit 1
 fi
 echo "fixture_metric_metadata_equal=true"
+base_counter_values=$(sed -n 's/^fixture_counter_values_sha256=//p' "$workdir/otel-qa-base.fixture")
+guarded_counter_values=$(sed -n 's/^fixture_counter_values_sha256=//p' "$workdir/otel-qa-guarded.fixture")
+if [[ -z "$base_counter_values" || "$base_counter_values" != "$guarded_counter_values" ]]; then
+  echo "fixture_counter_values_changed=true" >&2
+  exit 1
+fi
+echo "fixture_counter_values_equal=true"
 
 for log in "$workdir"/*.log; do
   awk '/ENDED_SPAN_CALLSITE/{show=1; left=34} show && left-- > 0 {print}' "$log" \
