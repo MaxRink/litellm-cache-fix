@@ -23,6 +23,7 @@ jobs:
         run: |
           docker run --rm --network host \
             --entrypoint /app/.venv/bin/python \
+            -e WAIT_AFTER_FIRST=0.5 \
             -v "$GITHUB_WORKSPACE/validation/ollama-asgi-redis-fixture.py:/run/fixture.py:ro" \
             -v "$GITHUB_WORKSPACE/validation/routing_audit.py:/run/routing_audit.py:ro" \
             ghcr.io/maxrink/litellm-otel-cache-fix@sha256:d544bc8c2000be45030b07c23959de3877420e2df4cffe57d8d87d9e33c70ee2 \
