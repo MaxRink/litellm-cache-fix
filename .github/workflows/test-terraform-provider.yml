@@ -110,7 +110,7 @@ jobs:
 
       - name: Generate Prisma client
         run: |
-          uv run --no-sync prisma generate --schema litellm/proxy/schema.prisma
+          uv run --no-project --with prisma==0.11.0 prisma generate --schema litellm/proxy/schema.prisma
 
       - name: Generate proxy OpenAPI schema
         run: |

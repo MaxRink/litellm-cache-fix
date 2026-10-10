@@ -97,7 +97,7 @@ jobs:
       - name: Generate Prisma client
         if: steps.changes.outputs.decision != 'skip'
         run: |
-          uv run --frozen --all-groups --all-extras prisma generate --schema litellm/proxy/schema.prisma
+          uv run --no-project --with prisma==0.11.0 prisma generate --schema litellm/proxy/schema.prisma
 
       - name: Check ruff format
         if: steps.changes.outputs.decision != 'skip'
@@ -398,7 +398,7 @@ jobs:
 
       - name: Generate Prisma client
         if: steps.changes.outputs.relevant == 'true'
-        run: uv run --frozen --all-groups --all-extras prisma generate --schema litellm/proxy/schema.prisma
+        run: uv run --no-project --with prisma==0.11.0 prisma generate --schema litellm/proxy/schema.prisma
 
       - name: Regenerate the lazy OpenAPI snapshot
         if: steps.changes.outputs.relevant == 'true'
@@ -512,10 +512,10 @@ jobs:
         run: uv run --no-sync python ./tests/code_coverage_tests/check_workflow_job_name_collisions.py
 
       - name: test_workflow_job_name_collisions
-        run: uv run --frozen --all-groups --all-extras pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_workflow_job_name_collisions.py
+        run: uv run --no-project --with pytest pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_workflow_job_name_collisions.py
 
       - name: test_unit_passed_gate
-        run: uv run --frozen --all-groups --all-extras pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_unit_passed_gate.py
+        run: uv run --no-project --with pytest pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_unit_passed_gate.py
 
       - name: test_e2e_changed_gate
         run: uv run --no-sync pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_e2e_changed_gate.py tests/code_coverage_tests/test_e2e_idp_stack.py
