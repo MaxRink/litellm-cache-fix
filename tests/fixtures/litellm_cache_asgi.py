@@ -37,9 +37,9 @@ from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
 from litellm.router import Router
 from litellm.types.utils import ModelResponse
 
-litellm.enable_caching_on_provider_specific_optional_params = True
+litellm.enable_caching_on_provider_specific_optional_params = True  # test-quality-ok: isolated fixture enables provider-parameter cache coverage
 cache = Cache()
-litellm.cache = cache
+litellm.cache = cache  # test-quality-ok: isolated fixture installs its in-memory cache before ASGI requests
 provider_calls = 0
 events: list[dict[str, Any]] = []
 
