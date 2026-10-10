@@ -39,6 +39,7 @@ def sync_send(self,request,*args,**kwargs):
 httpx.AsyncClient.send=async_send; httpx.Client.send=sync_send
 
 redis_host=os.environ.get('REDIS_HOST','127.0.0.1')
+wait_after_first=float(os.environ.get('WAIT_AFTER_FIRST','0.5'))
 litellm.cache=Cache(type='redis',host=redis_host,port=6379,namespace='litellm-ollama-asgi-fixture',default_in_redis_ttl=120,socket_timeout=2,max_connections=2)
 router=Router(model_list=[{'model_name':'ha-local','litellm_params':{'model':'ollama_chat/qwen3:4b','api_base':'http://mock.invalid','api_key':'fixture','num_ctx':8192},'model_info':{'rpm':60}}],cache_responses=True,enable_pre_call_checks=False,num_retries=0)
 auth=UserAPIKeyAuth.model_validate({'api_key':'fixture','key_alias':'paperless-gpt','user_role':'internal_user','team_id':'fixture-team','models':['ha-local']})
@@ -57,7 +58,7 @@ async def main():
         body={'model':'ha-local','messages':[{'role':'user','content':'Return exactly CACHE_OK.'}],'temperature':0,'max_tokens':16,'stream':False,'user':'paperless-gpt'}
         results=[]
         for _ in range(2):
-            r=await client.post('/v1/chat/completions',json=body); j=r.json(); results.append({'status':r.status_code,'id':j.get('id'),'content':((j.get('choices') or [{}])[0].get('message') or {}).get('content')}); await asyncio.sleep(2) if len(results)==1 else asyncio.sleep(0)
+            r=await client.post('/v1/chat/completions',json=body); j=r.json(); results.append({'status':r.status_code,'id':j.get('id'),'content':((j.get('choices') or [{}])[0].get('message') or {}).get('content')}); await asyncio.sleep(wait_after_first) if len(results)==1 else asyncio.sleep(0)
         print(json.dumps({'provider_calls':calls,'responses':results,'request_observations':request_shapes,'auth_flags':{'alias':auth.key_alias,'role':str(auth.user_role),'user_id_present':auth.user_id is not None}},sort_keys=True,separators=(',',':')),flush=True)
         assert [x['status'] for x in results]==[200,200]
         assert calls==1, calls
