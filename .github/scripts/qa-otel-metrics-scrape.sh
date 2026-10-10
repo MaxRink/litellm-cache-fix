@@ -36,8 +36,9 @@ run_case() {
     fi
     sleep 1
   done
+  docker exec "$name" python -c 'import hashlib, importlib.util; s=importlib.util.find_spec("litellm.integrations.opentelemetry"); p=s.origin; print(f"runtime_otel_path={p}"); print(f"runtime_otel_sha256={hashlib.sha256(open(p,"rb").read()).hexdigest()}")' >&2
   if ! docker exec "$name" python -c 'import urllib.request; req=urllib.request.Request("http://127.0.0.1:4000/metrics/", headers={"Authorization":"Bearer qa-master"}); r=urllib.request.urlopen(req, timeout=5); body=r.read(); assert r.status == 200 and body, r.status' \
-    >/dev/null; then
+    >"$workdir/$name.metrics"; then
     echo "metrics_scrape_failed=$name" >&2
     docker logs "$name" >&2 || true
     return 1
@@ -46,6 +47,7 @@ run_case() {
   docker logs "$name" >"$workdir/$name.log" 2>&1 || true
   local warning_count
   warning_count=$(grep -c "Setting attribute on ended span" "$workdir/$name.log" || true)
+  awk '/^# (HELP|TYPE) /{print}' "$workdir/$name.metrics" | sort -u | sha256sum | awk -v n="$name" '{print "metric_metadata_sha256[" n "]=" $1}' >&2
   docker rm -f "$name" >/dev/null 2>&1 || true
   printf '%s\n' "$warning_count"
 }
@@ -136,6 +138,14 @@ if ! guarded_warning_count=$(run_case otel-qa-guarded otel-qa-guarded | tail -1)
   exit 1
 fi
 echo "guarded_warning_count=$guarded_warning_count"
+
+base_metadata=$(awk '/^# (HELP|TYPE) /{print}' "$workdir/otel-qa-base.metrics" | sort -u | sha256sum | awk '{print $1}')
+guarded_metadata=$(awk '/^# (HELP|TYPE) /{print}' "$workdir/otel-qa-guarded.metrics" | sort -u | sha256sum | awk '{print $1}')
+if [[ "$base_metadata" != "$guarded_metadata" ]]; then
+  echo "metric_metadata_changed=true" >&2
+  exit 1
+fi
+echo "metric_metadata_equal=true"
 
 for log in "$workdir"/*.log; do
   awk '/ENDED_SPAN_CALLSITE/{show=1; left=34} show && left-- > 0 {print}' "$log" \
