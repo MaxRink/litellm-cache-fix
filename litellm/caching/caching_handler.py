@@ -934,9 +934,7 @@ class LLMCachingHandler:
         self,
         request_kwargs: dict[str, object],  # mutable-ok: helper normalizes embedding inputs in place
     ) -> object | None:
-        request_kwargs["input"] = self.handle_kwargs_input_list_or_str(
-            request_kwargs
-        )  # rebind-ok: normalize embedding inputs
+        request_kwargs["input"] = self.handle_kwargs_input_list_or_str(request_kwargs)
         tasks: Final[list[Awaitable[object]]] = []  # mutable-ok: collect concurrent cache reads
         for input_value in request_kwargs["input"]:
             preset_cache_key = litellm.cache.get_cache_key(
