@@ -57,7 +57,7 @@ async def main():
         body={'model':'ha-local','messages':[{'role':'user','content':'Return exactly CACHE_OK.'}],'temperature':0,'max_tokens':16,'stream':False,'user':'paperless-gpt'}
         results=[]
         for _ in range(2):
-            r=await client.post('/v1/chat/completions',json=body); j=r.json(); results.append({'status':r.status_code,'id':j.get('id'),'content':((j.get('choices') or [{}])[0].get('message') or {}).get('content')})
+            r=await client.post('/v1/chat/completions',json=body); j=r.json(); results.append({'status':r.status_code,'id':j.get('id'),'content':((j.get('choices') or [{}])[0].get('message') or {}).get('content')}); await asyncio.sleep(2) if len(results)==1 else asyncio.sleep(0)
         print(json.dumps({'provider_calls':calls,'responses':results,'request_observations':request_shapes,'auth_flags':{'alias':auth.key_alias,'role':str(auth.user_role),'user_id_present':auth.user_id is not None}},sort_keys=True,separators=(',',':')),flush=True)
         assert [x['status'] for x in results]==[200,200]
         assert calls==1, calls
