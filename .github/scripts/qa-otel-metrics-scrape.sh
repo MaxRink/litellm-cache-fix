@@ -96,6 +96,23 @@ for line in stable_samples:
 print("fixture_team_metadata=true")
 PY
 
+cat >"$workdir/sitecustomize.py" <<'PY'
+import sys
+import traceback
+from opentelemetry.trace import Span
+
+_original_set_attribute = Span.set_attribute
+
+def _capture_ended_span_write(self, key, value):
+    if not self.is_recording():
+        frames = traceback.extract_stack(limit=18)
+        rendered = "".join(traceback.format_list(frames[-10:]))
+        print("ENDED_SPAN_CALLSITE\n" + rendered, file=sys.stderr)
+    return _original_set_attribute(self, key, value)
+
+Span.set_attribute = _capture_ended_span_write
+PY
+
 run_case() {
   local name=$1 image=$2
   docker run -d --rm --name "$name" --network none \
@@ -105,9 +122,11 @@ run_case() {
     -e LITELLM_OTEL_INTEGRATION_ENABLE_METRICS=true \
     -e LITELLM_OTEL_INTEGRATION_ENABLE_EVENTS=false \
     -e OTEL_EXPORTER=console \
+    -e PYTHONPATH=/tmp/qa-hooks \
     -v "$workdir/config.yaml:/tmp/config.yaml:ro" \
     -v "$workdir/provider.py:/tmp/provider.py:ro" \
     -v "$workdir/prom_fixture.py:/tmp/prom_fixture.py:ro" \
+    -v "$workdir/sitecustomize.py:/tmp/qa-hooks/sitecustomize.py:ro" \
     "$image" --config /tmp/config.yaml --host 0.0.0.0 --port 4000 >/dev/null
 
   for _ in $(seq 1 60); do
@@ -132,7 +151,7 @@ run_case() {
     echo "unexpected_guarded_runtime_sha=$runtime_sha" >&2
     return 1
   fi
-  docker exec "$name" python -c 'import urllib.request, json; req=urllib.request.Request("http://127.0.0.1:4000/v1/chat/completions", data=json.dumps({"model":"qa-unused","messages":[{"role":"user","content":"qa"}]}).encode(), headers={"Authorization":"Bearer qa-master","Content-Type":"application/json"}); print(urllib.request.urlopen(req, timeout=5).status)' >"$workdir/$name.provider" 2>&1 || true
+  docker exec "$name" python -c 'import urllib.request, json; req=urllib.request.Request("http://127.0.0.1:4000/v1/chat/completions", data=json.dumps({"model":"qa-unused","messages":[{"role":"user","content":"qa"}]}).encode(), headers={"Authorization":"Bearer qa-master","Content-Type":"application/json"}); status=urllib.request.urlopen(req, timeout=5).status; assert status == 200, status; print(status)' >"$workdir/$name.provider" 2>&1
   cat "$workdir/$name.provider" >&2
   sleep 3
   docker exec "$name" python -c 'from opentelemetry.sdk.trace import TracerProvider; from litellm.integrations.opentelemetry import OpenTelemetry; p=TracerProvider(); s=p.get_tracer("qa").start_span("team"); o=OpenTelemetry(tracer_provider=p); o.safe_set_attribute(s, "team.id", "qa-team"); assert s.attributes.get("team.id") == "qa-team"; s.end(); print("team_attribute_preserved=true")' >&2
