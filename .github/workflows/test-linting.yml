@@ -512,10 +512,10 @@ jobs:
         run: uv run --no-sync python ./tests/code_coverage_tests/check_workflow_job_name_collisions.py
 
       - name: test_workflow_job_name_collisions
-        run: uvx --from pytest==9.0.3 --with pyyaml==6.0.3 pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_workflow_job_name_collisions.py
+        run: uvx --from pytest==9.0.3 --with pyyaml==6.0.3 --with pydantic==2.13.4 pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_workflow_job_name_collisions.py
 
       - name: test_unit_passed_gate
-        run: uvx --from pytest==9.0.3 --with pyyaml==6.0.3 pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_unit_passed_gate.py
+        run: uvx --from pytest==9.0.3 --with pyyaml==6.0.3 --with pydantic==2.13.4 pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_unit_passed_gate.py
 
       - name: test_e2e_changed_gate
         run: uv run --no-sync pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_e2e_changed_gate.py tests/code_coverage_tests/test_e2e_idp_stack.py
