@@ -19,6 +19,8 @@ from litellm.llms.custom_httpx.http_handler import (
 from litellm.llms.openai.openai import AllMessageValues
 from litellm.types.llms.vertex_ai import (
     CachedContentListAllResponseBody,
+    ToolConfig,
+    Tools,
     VertexAICachedContentResponseObject,
 )
 from litellm.utils import is_prompt_caching_valid_prompt
@@ -32,7 +34,9 @@ from .transformation import (
 )
 
 
-def _restore_context_options(optional_params: dict[str, object], tools: object, tool_choice: object) -> None:
+def _restore_context_options(
+    optional_params: dict[str, object], tools: Tools | None, tool_choice: ToolConfig | None
+) -> None:
     if tools is not None:
         optional_params["tools"] = tools  # rebind-ok: restore caller optional parameters
     if tool_choice is not None:
@@ -346,8 +350,12 @@ class ContextCachingEndpoints(VertexBase):
             )
             return messages, optional_params, None
 
-        tools: Final = optional_params.pop("tools", None)
-        tool_choice: Final = optional_params.pop("tool_choice", None)
+        tools_value: object = cast(object, optional_params.pop("tools", None))
+        tools: Final[Tools | None] = cast(Tools, tools_value) if isinstance(tools_value, dict) else None
+        tool_choice_value: object = cast(object, optional_params.pop("tool_choice", None))
+        tool_choice: Final[ToolConfig | None] = (
+            cast(ToolConfig, tool_choice_value) if isinstance(tool_choice_value, dict) else None
+        )
 
         ## AUTHORIZATION ##
         token, url = self._get_token_and_url_context_caching(
@@ -379,6 +387,7 @@ class ContextCachingEndpoints(VertexBase):
             client = HTTPHandler(**_params)
         else:
             client = client
+        assert client is not None  # narrowed after selecting the HTTP client
 
         ## CHECK IF CACHED ALREADY
         cache_key_kwargs: Final[dict[str, object]] = {  # mutable-ok: cache key accepts dynamic request fields
@@ -389,7 +398,9 @@ class ContextCachingEndpoints(VertexBase):
         }
         generated_cache_key: Final = local_cache_obj.get_cache_key(**cache_key_kwargs)
         if not generated_cache_key:
-            _restore_context_options(optional_params, tools, tool_choice)
+            _restore_context_options(
+                cast(dict[str, object], optional_params), tools, tool_choice
+            )
             return messages, optional_params, None
         google_cache_name: Final = self.check_cache(
             cache_key=generated_cache_key,
@@ -417,7 +428,8 @@ class ContextCachingEndpoints(VertexBase):
             vertex_location=vertex_location,
         )
 
-        cached_content_request_body["tools"] = tools
+        if tools is not None:
+            cached_content_request_body["tools"] = tools
         if tool_choice is not None:
             cached_content_request_body["toolConfig"] = tool_choice
 
@@ -513,8 +525,12 @@ class ContextCachingEndpoints(VertexBase):
             )
             return messages, optional_params, None
 
-        tools: Final = optional_params.pop("tools", None)
-        tool_choice: Final = optional_params.pop("tool_choice", None)
+        tools_value: object = cast(object, optional_params.pop("tools", None))
+        tools: Final[Tools | None] = cast(Tools, tools_value) if isinstance(tools_value, dict) else None
+        tool_choice_value: object = cast(object, optional_params.pop("tool_choice", None))
+        tool_choice: Final[ToolConfig | None] = (
+            cast(ToolConfig, tool_choice_value) if isinstance(tool_choice_value, dict) else None
+        )
 
         ## AUTHORIZATION ##
         token, url = self._get_token_and_url_context_caching(
@@ -541,6 +557,7 @@ class ContextCachingEndpoints(VertexBase):
             client = get_async_httpx_client(params={"timeout": timeout}, llm_provider=litellm.LlmProviders.VERTEX_AI)
         else:
             client = client
+        assert client is not None  # narrowed after selecting the HTTP client
 
         ## CHECK IF CACHED ALREADY
         cache_key_kwargs: Final[dict[str, object]] = {  # mutable-ok: cache key accepts dynamic request fields
@@ -551,7 +568,9 @@ class ContextCachingEndpoints(VertexBase):
         }
         generated_cache_key: Final = local_cache_obj.get_cache_key(**cache_key_kwargs)
         if not generated_cache_key:
-            _restore_context_options(optional_params, tools, tool_choice)
+            _restore_context_options(
+                cast(dict[str, object], optional_params), tools, tool_choice
+            )
             return messages, optional_params, None
         google_cache_name: Final = await self.async_check_cache(
             cache_key=generated_cache_key,
@@ -580,7 +599,8 @@ class ContextCachingEndpoints(VertexBase):
             vertex_location=vertex_location,
         )
 
-        cached_content_request_body["tools"] = tools
+        if tools is not None:
+            cached_content_request_body["tools"] = tools
         if tool_choice is not None:
             cached_content_request_body["toolConfig"] = tool_choice
 

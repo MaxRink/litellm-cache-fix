@@ -373,10 +373,15 @@ class Cache:
             return (*self._SEMANTIC_CACHE_TENANT_SCOPE_FIELDS, self._SEMANTIC_CACHE_END_USER_SCOPE_FIELD)
         return self._SEMANTIC_CACHE_TENANT_SCOPE_FIELDS
 
-    def _get_semantic_cache_tenant_scope(self, kwargs: dict) -> str:
-        litellm_params: Final[dict] = kwargs.get("litellm_params") or {}
-        metadata_sources: Final[tuple[dict, ...]] = tuple(
-            source.get(key) or {} for source in (kwargs, litellm_params) for key in ("metadata", "litellm_metadata")
+    def _get_semantic_cache_tenant_scope(self, kwargs: Mapping[str, object]) -> str:
+        def as_mapping(value: object) -> Mapping[str, object]:
+            return cast(Mapping[str, object], value) if isinstance(value, Mapping) else cast(Mapping[str, object], {})
+
+        litellm_params: Final = as_mapping(kwargs.get("litellm_params"))
+        metadata_sources: Final[tuple[Mapping[str, object], ...]] = tuple(
+            as_mapping(source.get(key))
+            for source in (kwargs, litellm_params)
+            for key in ("metadata", "litellm_metadata")
         )
         scope_values: Final = (
             (field, next((source[field] for source in metadata_sources if source.get(field) is not None), None))
@@ -388,7 +393,7 @@ class Cache:
         """Return a stable, non-secret scope for authenticated proxy callers."""
 
         def as_mapping(value: object) -> Mapping[str, object]:
-            return value if isinstance(value, Mapping) else {}
+            return cast(Mapping[str, object], value) if isinstance(value, Mapping) else cast(Mapping[str, object], {})
 
         litellm_params: Final = as_mapping(kwargs.get("litellm_params"))  # pyright: ignore[reportArgumentType, reportUnknownArgumentType]  # proxy kwargs are dynamically typed
         metadata_sources: Final[tuple[Mapping[str, object], ...]] = (
@@ -481,7 +486,7 @@ class Cache:
     def _get_param_value(
         self,
         param: str,
-        kwargs: dict,
+        kwargs: Mapping[str, object],
     ) -> str | None:
         """
         Get the value for the given param from kwargs
@@ -490,9 +495,12 @@ class Cache:
             return self._get_model_param_value(kwargs)
         elif param == "file":
             return self._get_file_param_value(kwargs)
-        return kwargs[param]
+        value = kwargs.get(param)
+        if value is None:
+            return None
+        return value if isinstance(value, str) else str(value)
 
-    def _get_model_param_value(self, kwargs: dict) -> str:
+    def _get_model_param_value(self, kwargs: Mapping[str, object]) -> str:
         """
         Handles getting the value for the 'model' param from kwargs
 
@@ -500,42 +508,60 @@ class Cache:
         2. Else if a model_group is set, then return the model_group as the model. This is used for all requests sent through the litellm.Router()
         3. Else use the `model` passed in kwargs
         """
-        litellm_params: Final[dict] = kwargs.get("litellm_params", {}) or {}
-        metadata_sources: Final[tuple[dict, ...]] = (
-            kwargs.get("metadata") or {},
-            kwargs.get("litellm_metadata") or {},
-            litellm_params.get("metadata") or {},
-            litellm_params.get("litellm_metadata") or {},
+        def as_mapping(value: object) -> Mapping[str, object]:
+            return cast(Mapping[str, object], value) if isinstance(value, Mapping) else cast(Mapping[str, object], {})
+
+        litellm_params: Final = as_mapping(kwargs.get("litellm_params"))
+        metadata_sources: Final[tuple[Mapping[str, object], ...]] = (
+            as_mapping(kwargs.get("metadata")),
+            as_mapping(kwargs.get("litellm_metadata")),
+            as_mapping(litellm_params.get("metadata")),
+            as_mapping(litellm_params.get("litellm_metadata")),
         )
-        model_group: Final[str | None] = next(
+        model_group_value: Final = next(
             (source["model_group"] for source in metadata_sources if source.get("model_group")), None
         )
+        model_group: Final[str | None] = model_group_value if isinstance(model_group_value, str) else None
         caching_group: Final = next(
             (group for source in metadata_sources if (group := self._get_caching_group(source, model_group))), None
         )
-        return caching_group or model_group or kwargs["model"]
+        model_value = kwargs.get("model")
+        if isinstance(model_value, str):
+            return caching_group or model_group or model_value
+        if caching_group is not None:
+            return caching_group
+        if model_group is not None:
+            return model_group
+        raise KeyError("model")
 
-    def _get_caching_group(self, metadata: dict, model_group: str | None) -> str | None:
-        caching_groups: Final[list | None] = metadata.get("caching_groups", [])
-        if caching_groups:
-            for group in caching_groups:
-                if model_group in group:
-                    return str(group)
+    def _get_caching_group(self, metadata: Mapping[str, object], model_group: str | None) -> str | None:
+        caching_groups_value = metadata.get("caching_groups")
+        if not isinstance(caching_groups_value, list):
+            return None
+        caching_groups: list[object] = cast(list[object], caching_groups_value)
+        for group in caching_groups:
+            if isinstance(group, (list, tuple, set)) and model_group in group:
+                return str(cast(object, group))
         return None
 
-    def _get_file_param_value(self, kwargs: dict) -> str:
-        """
-        Handles getting the value for the 'file' param from kwargs. Used for `transcription` requests
-        """
-        file: Final = kwargs.get("file")
-        metadata: Final = kwargs.get("metadata", {})
-        litellm_params: Final = kwargs.get("litellm_params", {})
-        return (
-            metadata.get("file_checksum")
-            or getattr(file, "name", None)
-            or metadata.get("file_name")
-            or litellm_params.get("file_name")
+    def _get_file_param_value(self, kwargs: Mapping[str, object]) -> str | None:
+        """Handles getting the value for the ``file`` cache parameter."""
+        def as_mapping(value: object) -> Mapping[str, object]:
+            return cast(Mapping[str, object], value) if isinstance(value, Mapping) else cast(Mapping[str, object], {})
+
+        file_value = kwargs.get("file")
+        metadata = as_mapping(kwargs.get("metadata"))
+        litellm_params = as_mapping(kwargs.get("litellm_params"))
+        candidates = (
+            metadata.get("file_checksum"),
+            getattr(file_value, "name", None),
+            metadata.get("file_name"),
+            litellm_params.get("file_name"),
         )
+        for value in candidates:
+            if isinstance(value, str) and value:
+                return value
+        return None
 
     def get_preset_cache_key_from_kwargs(self, **kwargs: object) -> str | None:
         """
@@ -730,6 +756,14 @@ class Cache:
     ) -> str | None:
         """Normalize a caller-provided key for integrations outside this class."""
         return self._prepare_explicit_cache_key(explicit_key, **kwargs)
+
+    def get_cache_key_from_explicit_key(
+        self,
+        explicit_key: object,
+        **kwargs: object,  # kwargs-ok: compatibility wrapper preserves dynamic cache metadata
+    ) -> str | None:
+        """Backward-compatible name for preparing an explicit cache key."""
+        return self.prepare_explicit_cache_key(explicit_key, **kwargs)
 
     def generate_streaming_content(self, content):
         chunk_size: Final = 5  # Adjust the chunk size as needed
