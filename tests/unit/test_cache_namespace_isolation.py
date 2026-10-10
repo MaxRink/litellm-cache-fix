@@ -78,6 +78,32 @@ def test_explicit_cache_key_is_scoped_for_authenticated_proxy_requests():
     assert first_key != "shared-client-key"
 
 
+def test_preset_cache_key_is_scoped_but_internal_scoped_key_is_reused():
+    cache = Cache(type="local")
+    first = UserAPIKeyAuth(api_key="hash-a", team_id="team-a", user_id="user-a")
+    second = UserAPIKeyAuth(api_key="hash-b", team_id="team-a", user_id="user-b")
+    common = {"model": "fixture-model", "messages": [{"role": "user", "content": "fixture"}]}
+
+    first_key = cache.get_cache_key(
+        **common,
+        litellm_metadata=_request_metadata(first),
+        litellm_params={"preset_cache_key": "client-preset"},
+    )
+    second_key = cache.get_cache_key(
+        **common,
+        litellm_metadata=_request_metadata(second),
+        litellm_params={"preset_cache_key": "client-preset"},
+    )
+    reused_key = cache.get_cache_key(
+        **common,
+        litellm_metadata=_request_metadata(first),
+        litellm_params={"preset_cache_key": first_key},
+    )
+
+    assert first_key != second_key
+    assert reused_key == first_key
+
+
 def test_cache_key_ignores_otel_span_lifecycle_objects():
     cache = Cache(type="local")
     auth = UserAPIKeyAuth(api_key="hash-a", team_id="team-a", user_id="user-a")

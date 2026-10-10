@@ -389,6 +389,15 @@ class Cache:
 
         preset_cache_key: Final = self.get_preset_cache_key_from_kwargs(**kwargs)
         if preset_cache_key is not None:
+            authenticated_namespace: str | None = self._get_authenticated_cache_namespace(**kwargs)
+            if authenticated_namespace is not None:
+                namespace_prefix = ":".join(
+                    value for value in (self.namespace, authenticated_namespace) if isinstance(value, str) and value
+                )
+                if not preset_cache_key.startswith(f"{namespace_prefix}:"):
+                    return self._add_namespace_to_cache_key(
+                        self._get_hashed_cache_key(preset_cache_key), **kwargs
+                    )
             verbose_logger.debug("\nReturning preset cache key: %s", preset_cache_key)
             return preset_cache_key
 
@@ -436,19 +445,7 @@ class Cache:
         """
         if not isinstance(cache_key, str):
             raise TypeError("cache_key must be a string")
-        metadata_sources: Final = tuple(
-            source
-            for source in (kwargs.get("metadata"), kwargs.get("litellm_metadata"))
-            if isinstance(source, Mapping)
-        )
-        try:
-            from litellm.proxy._types import UserAPIKeyAuth
-        except ImportError:
-            UserAPIKeyAuth = None  # type: ignore[assignment,misc]
-        authenticated = UserAPIKeyAuth is not None and any(
-            isinstance(source.get("user_api_key_auth"), UserAPIKeyAuth) for source in metadata_sources
-        )
-        if not authenticated:
+        if self._get_authenticated_cache_namespace(**kwargs) is None:
             return cache_key
         return self._add_namespace_to_cache_key(self._get_hashed_cache_key(cache_key), **kwargs)
 
@@ -579,34 +576,9 @@ class Cache:
             for source in (kwargs.get("metadata"), kwargs.get("litellm_metadata"))
             if isinstance(source, Mapping)
         )
-        # The proxy stamps a real UserAPIKeyAuth model after authentication. A
-        # client-provided dict/string with the same field name is not trusted.
-        authenticated_namespace: str | None = None
-        authenticated_request: bool = False
-        try:
-            from litellm.proxy._types import UserAPIKeyAuth
-        except ImportError:
-            UserAPIKeyAuth = None  # type: ignore[assignment,misc]
-        for metadata in metadata_sources:
-            auth_object: object | None = metadata.get("user_api_key_auth")
-            if UserAPIKeyAuth is not None and isinstance(auth_object, UserAPIKeyAuth):
-                authenticated_request = True
-                identity_fields = {
-                    "api_key": getattr(auth_object, "api_key", None),
-                    "team_id": getattr(auth_object, "team_id", None),
-                    "project_id": getattr(auth_object, "project_id", None),
-                    "org_id": getattr(auth_object, "org_id", None),
-                    "user_id": getattr(auth_object, "user_id", None),
-                    "end_user_id": getattr(auth_object, "end_user_id", None),
-                    "user_role": getattr(auth_object, "user_role", None),
-                }
-                identity = json.dumps(identity_fields, sort_keys=True, default=str, separators=(",", ":"))
-                authenticated_namespace = "caller:" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:32]
-                break
+        authenticated_namespace: str | None = self._get_authenticated_cache_namespace(**kwargs)
+        authenticated_request: bool = authenticated_namespace is not None
         if authenticated_request:
-            # Never let request metadata select a bucket once the proxy has
-            # authenticated the caller. The operator namespace remains a stable
-            # outer prefix for fleet isolation.
             namespace: Final = ":".join(
                 value for value in (self.namespace, authenticated_namespace) if isinstance(value, str) and value
             )
@@ -620,6 +592,33 @@ class Cache:
             hash_hex = f"{namespace}:{hash_hex}"
         verbose_logger.debug("Final hashed key: %s", hash_hex)
         return hash_hex
+
+    def _get_authenticated_cache_namespace(self, **kwargs: object) -> str | None:
+        """Derive the opaque cache namespace from the server-authenticated key."""
+        metadata_sources: Final = tuple(
+            source
+            for source in (kwargs.get("metadata"), kwargs.get("litellm_metadata"))
+            if isinstance(source, Mapping)
+        )
+        try:
+            from litellm.proxy._types import UserAPIKeyAuth
+        except ImportError:
+            UserAPIKeyAuth = None  # type: ignore[assignment,misc]
+        for metadata in metadata_sources:
+            auth_object: object | None = metadata.get("user_api_key_auth")
+            if UserAPIKeyAuth is not None and isinstance(auth_object, UserAPIKeyAuth):
+                identity_fields = {
+                    "api_key": getattr(auth_object, "api_key", None),
+                    "team_id": getattr(auth_object, "team_id", None),
+                    "project_id": getattr(auth_object, "project_id", None),
+                    "org_id": getattr(auth_object, "org_id", None),
+                    "user_id": getattr(auth_object, "user_id", None),
+                    "end_user_id": getattr(auth_object, "end_user_id", None),
+                    "user_role": getattr(auth_object, "user_role", None),
+                }
+                identity = json.dumps(identity_fields, sort_keys=True, default=str, separators=(",", ":"))
+                return "caller:" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:32]
+        return None
 
     def generate_streaming_content(self, content):
         chunk_size: Final = 5  # Adjust the chunk size as needed
