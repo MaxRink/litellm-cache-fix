@@ -42,6 +42,7 @@ PY
 cat >"$workdir/prom_fixture.py" <<'PY'
 import asyncio
 import hashlib
+from datetime import datetime, timedelta
 from prometheus_client import REGISTRY, generate_latest
 import litellm
 from litellm.integrations.prometheus import PrometheusLogger
@@ -74,7 +75,8 @@ payload = {
 }
 logger = PrometheusLogger()
 litellm.callbacks = [logger]
-asyncio.run(logger.async_log_success_event({"model": "qa-unused", "litellm_params": {"metadata": metadata}, "standard_logging_object": payload}, {"model": "qa-unused"}, None, None))
+end_time = datetime.now()
+asyncio.run(logger.async_log_success_event({"model": "qa-unused", "litellm_params": {"metadata": metadata}, "standard_logging_object": payload}, {"model": "qa-unused"}, end_time - timedelta(milliseconds=25), end_time))
 text = generate_latest(REGISTRY).decode()
 samples = [line for line in text.splitlines() if line.startswith("litellm_")]
 assert samples, "production Prometheus callback emitted no litellm samples"
@@ -106,7 +108,8 @@ run_case() {
   done
   docker exec -d "$name" python /tmp/provider.py >/dev/null
   sleep 1
-  docker exec "$name" python /tmp/prom_fixture.py >&2
+  docker exec "$name" python /tmp/prom_fixture.py >"$workdir/$name.fixture" 2>&1
+  cat "$workdir/$name.fixture" >&2
   docker exec "$name" python -c 'import hashlib, importlib.util; s=importlib.util.find_spec("litellm.integrations.opentelemetry"); p=s.origin; print(f"runtime_otel_path={p}"); print(f"runtime_otel_sha256={hashlib.sha256(open(p,"rb").read()).hexdigest()}")' >&2
   docker exec "$name" python -c 'import urllib.request, json; req=urllib.request.Request("http://127.0.0.1:4000/v1/chat/completions", data=json.dumps({"model":"qa-unused","messages":[{"role":"user","content":"qa"}]}).encode(), headers={"Authorization":"Bearer qa-master","Content-Type":"application/json"}); print(urllib.request.urlopen(req, timeout=5).status)' >"$workdir/$name.provider" 2>&1 || true
   cat "$workdir/$name.provider" >&2
@@ -124,13 +127,15 @@ run_case() {
   local warning_count
   warning_count=$(grep -c "Setting attribute on ended span" "$workdir/$name.log" || true)
   awk '/^# (HELP|TYPE) /{print}' "$workdir/$name.metrics" | sort -u | sha256sum | awk -v n="$name" '{print "metric_metadata_sha256[" n "]=" $1}' >&2
-  local sample_count
+  local sample_count fixture_sample_count
   sample_count=$(grep -E '^litellm_[a-zA-Z0-9_:]+([ {]|$)' "$workdir/$name.metrics" | wc -l | tr -d ' ')
-  if [[ "$sample_count" -eq 0 ]]; then
-    echo "metric_sample_count_zero=$name" >&2
+  fixture_sample_count=$(sed -n 's/^fixture_metric_sample_count=//p' "$workdir/$name.fixture")
+  if [[ -z "$fixture_sample_count" || "$fixture_sample_count" -eq 0 ]]; then
+    echo "fixture_metric_sample_count_zero=$name" >&2
     return 1
   fi
   echo "metric_sample_count[$name]=$sample_count" >&2
+  echo "fixture_metric_sample_count[$name]=$fixture_sample_count" >&2
   docker rm -f "$name" >/dev/null 2>&1 || true
   printf '%s\n' "$warning_count"
 }
@@ -229,6 +234,13 @@ if [[ "$base_metadata" != "$guarded_metadata" ]]; then
   exit 1
 fi
 echo "metric_metadata_equal=true"
+base_fixture_metadata=$(sed -n 's/^fixture_metric_metadata_sha256=//p' "$workdir/otel-qa-base.fixture")
+guarded_fixture_metadata=$(sed -n 's/^fixture_metric_metadata_sha256=//p' "$workdir/otel-qa-guarded.fixture")
+if [[ -z "$base_fixture_metadata" || "$base_fixture_metadata" != "$guarded_fixture_metadata" ]]; then
+  echo "fixture_metric_metadata_changed=true" >&2
+  exit 1
+fi
+echo "fixture_metric_metadata_equal=true"
 
 for log in "$workdir"/*.log; do
   awk '/ENDED_SPAN_CALLSITE/{show=1; left=34} show && left-- > 0 {print}' "$log" \
