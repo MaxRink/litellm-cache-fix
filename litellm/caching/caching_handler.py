@@ -122,12 +122,10 @@ def _set_cache_key_if_available(
 
 
 def _is_response_cache_excluded(model: str | None, kwargs: Mapping[str, object]) -> bool:
-    # Older LiteLLM trees do not ship the optional Copilot per-user module.
-    # Preserve the cache exclusion when available while keeping cache handling
-    # compatible with those trees.
     try:
         from litellm.llms.github_copilot.per_user_auth import is_github_copilot_per_user_request
     except ImportError:
+
         def is_github_copilot_per_user_request(_kwargs: Mapping[str, object]) -> bool:
             return False
 
