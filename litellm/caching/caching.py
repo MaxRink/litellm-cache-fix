@@ -1020,9 +1020,7 @@ class Cache:
                         cache_key, cached_data, kwargs = cache_entry
                         cache_list.append((cache_key, cached_data))
                 elif isinstance(kwargs["input"], str):
-                    cache_entry = self.add_embedding_response_to_cache(
-                        result, kwargs["input"], kwargs
-                    )
+                    cache_entry = self.add_embedding_response_to_cache(result, kwargs["input"], kwargs)
                     if cache_entry is None:
                         return
                     cache_key, cached_data, kwargs = cache_entry
