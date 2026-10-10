@@ -50,9 +50,9 @@ jobs:
           path: |
             ~/.cache/uv
             .venv
-          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+          key: ${{ runner.os }}-uv-${{ github.repository_id }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            ${{ runner.os }}-uv-
+            ${{ runner.os }}-uv-${{ github.repository_id }}-
 
       - name: Cache uv dependencies
         if: github.ref != 'refs/heads/main'
@@ -61,9 +61,9 @@ jobs:
           path: |
             ~/.cache/uv
             .venv
-          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+          key: ${{ runner.os }}-uv-${{ github.repository_id }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            ${{ runner.os }}-uv-
+            ${{ runner.os }}-uv-${{ github.repository_id }}-
 
       - name: Cache the Rust build
         uses: ./.github/actions/cache-cargo-build

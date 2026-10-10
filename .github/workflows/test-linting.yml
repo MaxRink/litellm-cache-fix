@@ -66,9 +66,9 @@ jobs:
           path: |
             ~/.cache/uv
             .venv
-          key: ${{ runner.os }}-uv-lint-${{ hashFiles('uv.lock') }}
+          key: ${{ runner.os }}-uv-lint-${{ github.repository_id }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            ${{ runner.os }}-uv-lint-
+            ${{ runner.os }}-uv-lint-${{ github.repository_id }}-
 
       - name: Clean Python cache
         if: steps.changes.outputs.decision != 'skip'
@@ -380,9 +380,9 @@ jobs:
           path: |
             ~/.cache/uv
             .venv
-          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+          key: ${{ runner.os }}-uv-${{ github.repository_id }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            ${{ runner.os }}-uv-
+            ${{ runner.os }}-uv-${{ github.repository_id }}-
 
       - name: Cache the Rust build
         if: steps.changes.outputs.relevant == 'true'
@@ -486,9 +486,9 @@ jobs:
           path: |
             ~/.cache/uv
             .venv
-          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+          key: ${{ runner.os }}-uv-${{ github.repository_id }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            ${{ runner.os }}-uv-
+            ${{ runner.os }}-uv-${{ github.repository_id }}-
 
       - name: Cache the Rust build
         uses: ./.github/actions/cache-cargo-build
