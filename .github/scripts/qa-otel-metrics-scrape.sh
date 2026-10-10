@@ -99,5 +99,5 @@ fi
 echo "guarded_warning_count=$guarded_warning_count"
 
 for log in "$workdir"/*.log; do
-  grep -E "^.*(Setting attribute on ended span|Traceback|ERROR).*" "$log" | sed -E 's/(Authorization|api_key|token|prompt|messages)[^ ]*/[redacted]/Ig' | head -20 || true
+  grep -E "^.*(ENDED_SPAN_CALLSITE|Setting attribute on ended span|Traceback|ERROR).*" "$log" | sed -E 's/(Authorization|api_key|token|prompt|messages)[^ ]*/[redacted]/Ig' | head -80 || true
 done
