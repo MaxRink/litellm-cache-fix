@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import litellm
 from litellm import Router
+from litellm.caching.caching import Cache
 from litellm.caching.caching_handler import LLMCachingHandler
 
 key_events=[]
@@ -38,7 +39,6 @@ async def _trace_set(self,*args,**kwargs):
     finally: _cache_phase=old
 LLMCachingHandler._async_get_cache=_trace_get
 LLMCachingHandler.async_set_cache=_trace_set
-from litellm.caching.caching import Cache
 from litellm.proxy._types import UserAPIKeyAuth
 import importlib.util
 spec=importlib.util.spec_from_file_location('routing_audit','/run/routing_audit.py')
