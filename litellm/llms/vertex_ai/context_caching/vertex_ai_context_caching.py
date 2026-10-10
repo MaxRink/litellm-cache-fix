@@ -398,9 +398,7 @@ class ContextCachingEndpoints(VertexBase):
         }
         generated_cache_key: Final = local_cache_obj.get_cache_key(**cache_key_kwargs)
         if not generated_cache_key:
-            _restore_context_options(
-                cast(dict[str, object], optional_params), tools, tool_choice
-            )
+            _restore_context_options(cast(dict[str, object], optional_params), tools, tool_choice)
             return messages, optional_params, None
         google_cache_name: Final = self.check_cache(
             cache_key=generated_cache_key,
@@ -568,9 +566,7 @@ class ContextCachingEndpoints(VertexBase):
         }
         generated_cache_key: Final = local_cache_obj.get_cache_key(**cache_key_kwargs)
         if not generated_cache_key:
-            _restore_context_options(
-                cast(dict[str, object], optional_params), tools, tool_choice
-            )
+            _restore_context_options(cast(dict[str, object], optional_params), tools, tool_choice)
             return messages, optional_params, None
         google_cache_name: Final = await self.async_check_cache(
             cache_key=generated_cache_key,

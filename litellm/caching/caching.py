@@ -509,6 +509,7 @@ class Cache:
         2. Else if a model_group is set, then return the model_group as the model. This is used for all requests sent through the litellm.Router()
         3. Else use the `model` passed in kwargs
         """
+
         def as_mapping(value: object) -> Mapping[str, object]:
             return cast(Mapping[str, object], value) if isinstance(value, Mapping) else cast(Mapping[str, object], {})
 
@@ -547,6 +548,7 @@ class Cache:
 
     def _get_file_param_value(self, kwargs: Mapping[str, object]) -> str | None:
         """Handles getting the value for the ``file`` cache parameter."""
+
         def as_mapping(value: object) -> Mapping[str, object]:
             return cast(Mapping[str, object], value) if isinstance(value, Mapping) else cast(Mapping[str, object], {})
 
