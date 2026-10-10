@@ -19,7 +19,7 @@ import datetime
 import inspect
 import time
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Generator, Mapping
-from typing import TYPE_CHECKING, Any, Final, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Final, Optional, TypeVar, cast  # noqa: TID251  # narrow dynamic cache kwargs at a typed boundary
 
 from pydantic import ConfigDict, SkipValidation, ValidationError
 
