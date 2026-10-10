@@ -205,6 +205,19 @@ for root in sys.path:
 else:
     raise SystemExit("installed LiteLLM source not found")
 
+for root in sys.path:
+    path = Path(root) / "litellm/integrations/otel/logger.py"
+    if path.exists():
+        text = path.read_text()
+        needle = "                    for key, value in bag.items():\n                        server_span.set_attribute(key, value)"
+        replacement = "                    for key, value in bag.items():\n                        if is_recordable_span(server_span):\n                            server_span.set_attribute(key, value)"
+        if needle not in text:
+            raise SystemExit(f"logger guard insertion point not found: {path}")
+        path.write_text(text.replace(needle, replacement, 1))
+        break
+else:
+    raise SystemExit("installed LiteLLM OTEL logger source not found")
+
 print("OTEL_SOURCE_IDENTITY")
 try:
     from importlib.metadata import version
