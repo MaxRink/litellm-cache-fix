@@ -106,10 +106,12 @@ async def _request(
     namespace: str,
     client: httpx.AsyncClient,
     *,
-    cache_key: str,
+    cache_key: str | None = None,
+    span: str | None = None,
     cache_control: dict[str, object] | None = None,
 ) -> int:
     auth = UserAPIKeyAuth(
+        api_key=hashlib.sha256(caller.encode()).hexdigest(),
         token=f"fixture-{caller}",
         key_alias=caller,
         models=["paperless-routine"],
@@ -124,9 +126,12 @@ async def _request(
         "messages": [{"role": "user", "content": "CACHE_CANARY_OK."}],
         "temperature": 0,
         "stream": False,
-        "cache_key": cache_key,
         "metadata": {"redis_namespace": namespace},
     }
+    if span is not None:
+        body["parent_otel_span"] = span
+    if cache_key is not None:
+        body["cache_key"] = cache_key
     if cache_control is not None:
         body["cache"] = cache_control
     response = await client.post(
@@ -141,31 +146,53 @@ async def main() -> None:
     global events
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=proxy_server.app), base_url="http://fixture") as client:
         statuses: list[int] = []
-        statuses.append(await _request("caller-a", "tenant-a", client, cache_key="shared-client-key"))
+        # Preserve the generated-key/span regression: two callers each repeat
+        # the same deterministic request, so only two provider calls occur.
+        statuses.append(await _request("caller-a", "tenant-a", client, cache_key=None, span="span-a"))
+        calls_after_generated_a = provider_calls
+        statuses.append(await _request("caller-a", "tenant-a", client, cache_key=None, span="span-b"))
+        generated_a_reused = provider_calls == calls_after_generated_a
+        statuses.append(await _request("caller-b", "tenant-b", client, cache_key=None, span="span-c"))
+        calls_after_generated_b = provider_calls
+        statuses.append(await _request("caller-b", "tenant-b", client, cache_key=None, span="span-d"))
+        generated_b_reused = provider_calls == calls_after_generated_b
+
+        # Explicit-key isolation and same-caller reuse.
+        explicit_key = "shared-client-key"
+        statuses.append(await _request("caller-a", "tenant-a", client, cache_key=explicit_key))
+        await asyncio.sleep(0.05)
         first_store = next(event["key"] for event in events if event["op"] == "store")
         calls_after_a_first = provider_calls
-        statuses.append(await _request("caller-a", "tenant-a", client, cache_key="shared-client-key"))
+        statuses.append(await _request("caller-a", "tenant-a", client, cache_key=explicit_key))
         same_caller_reused = provider_calls == calls_after_a_first
 
         calls_before_b = provider_calls
         statuses.append(await _request("caller-b", "tenant-b", client, cache_key=first_store))
         caller_b_spoof_isolated = provider_calls == calls_before_b + 1
 
+        # Populate first; no-cache must bypass that existing entry.
+        no_cache_key = "no-cache-key"
+        statuses.append(await _request("caller-a", "tenant-a", client, cache_key=no_cache_key))
+        await asyncio.sleep(0.05)
         calls_before_no_cache = provider_calls
         events_before_no_cache = len(events)
         statuses.append(
-            await _request("caller-a", "tenant-a", client, cache_key="no-cache-key", cache_control={"no-cache": True})
+            await _request("caller-a", "tenant-a", client, cache_key=no_cache_key, cache_control={"no-cache": True})
         )
         no_cache_called_provider = provider_calls == calls_before_no_cache + 1
         no_cache_events = events[events_before_no_cache:]
 
-        calls_before_no_store = provider_calls
+        # A no-store response must not be available to a subsequent normal call.
+        no_store_key = "no-store-key"
         events_before_no_store = len(events)
         statuses.append(
-            await _request("caller-a", "tenant-a", client, cache_key="no-store-key", cache_control={"no-store": True})
+            await _request("caller-a", "tenant-a", client, cache_key=no_store_key, cache_control={"no-store": True})
         )
-        no_store_called_provider = provider_calls == calls_before_no_store + 1
         no_store_events = events[events_before_no_store:]
+        await asyncio.sleep(0.05)
+        calls_before_no_store_followup = provider_calls
+        statuses.append(await _request("caller-a", "tenant-a", client, cache_key=no_store_key))
+        no_store_called_provider = provider_calls == calls_before_no_store_followup + 1
 
     public_events = [{key: event[key] for key in ("op", "hit", "key_hash") if key in event} for event in events]
     success = (
@@ -174,6 +201,8 @@ async def main() -> None:
         and caller_b_spoof_isolated
         and no_cache_called_provider
         and no_store_called_provider
+        and generated_a_reused
+        and generated_b_reused
         and not any(event["op"] == "store" for event in no_store_events)
     )
     print(
@@ -182,6 +211,8 @@ async def main() -> None:
                 "status": "ok" if success else "failure",
                 "statuses": statuses,
                 "provider_calls": provider_calls,
+                "generated_a_reused": generated_a_reused,
+                "generated_b_reused": generated_b_reused,
                 "same_caller_reused": same_caller_reused,
                 "caller_b_spoof_isolated": caller_b_spoof_isolated,
                 "no_cache_called_provider": no_cache_called_provider,
@@ -199,6 +230,8 @@ async def main() -> None:
             sort_keys=True,
         )
     )
+    if not success:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
