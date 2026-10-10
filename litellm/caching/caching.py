@@ -427,6 +427,31 @@ class Cache:
         self._set_preset_cache_key_in_kwargs(preset_cache_key=hashed_cache_key, **kwargs_for_preset)
         return hashed_cache_key
 
+    def get_cache_key_from_explicit_key(self, cache_key: str, **kwargs: object) -> str:
+        """Normalize an explicit request key before proxy cache lookup/storage.
+
+        Explicit keys are caller-controlled, so authenticated proxy requests
+        must still receive the server-derived caller namespace.  Unauthenticated
+        SDK callers retain the historical explicit-key behavior.
+        """
+        if not isinstance(cache_key, str):
+            raise TypeError("cache_key must be a string")
+        metadata_sources: Final = tuple(
+            source
+            for source in (kwargs.get("metadata"), kwargs.get("litellm_metadata"))
+            if isinstance(source, Mapping)
+        )
+        try:
+            from litellm.proxy._types import UserAPIKeyAuth
+        except ImportError:
+            UserAPIKeyAuth = None  # type: ignore[assignment,misc]
+        authenticated = UserAPIKeyAuth is not None and any(
+            isinstance(source.get("user_api_key_auth"), UserAPIKeyAuth) for source in metadata_sources
+        )
+        if not authenticated:
+            return cache_key
+        return self._add_namespace_to_cache_key(self._get_hashed_cache_key(cache_key), **kwargs)
+
     def _get_param_value(
         self,
         param: str,

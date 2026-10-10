@@ -62,6 +62,22 @@ def test_authenticated_namespace_keeps_field_boundaries_distinct():
     assert first_key != second_key
 
 
+def test_explicit_cache_key_is_scoped_for_authenticated_proxy_requests():
+    cache = Cache(type="local")
+    first = UserAPIKeyAuth(api_key="hash-a", team_id="team-a", user_id="user-a")
+    second = UserAPIKeyAuth(api_key="hash-b", team_id="team-a", user_id="user-b")
+
+    first_key = cache.get_cache_key_from_explicit_key(
+        "shared-client-key", litellm_metadata=_request_metadata(first)
+    )
+    second_key = cache.get_cache_key_from_explicit_key(
+        "shared-client-key", litellm_metadata=_request_metadata(second)
+    )
+
+    assert first_key != second_key
+    assert first_key != "shared-client-key"
+
+
 def test_cache_key_ignores_otel_span_lifecycle_objects():
     cache = Cache(type="local")
     auth = UserAPIKeyAuth(api_key="hash-a", team_id="team-a", user_id="user-a")
