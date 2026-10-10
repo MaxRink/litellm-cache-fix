@@ -20,4 +20,4 @@ jobs:
           file: docker/litellm-cache-key-diagnostic/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/litellm-cache-key-diagnostic:6d32ffd6e92b81ce862a4d45a30f765fe44c958a
+          tags: ghcr.io/maxrink/litellm-cache-key-diagnostic:6d32ffd6e92b81ce862a4d45a30f765fe44c958a
