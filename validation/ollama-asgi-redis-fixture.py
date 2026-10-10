@@ -28,8 +28,14 @@ def fake_response(request):
         calls += 1
         return httpx.Response(200,json={'model':'qwen3:4b','created_at':'2026-01-01T00:00:00Z','message':{'role':'assistant','content':'CACHE_OK'},'done':True,'done_reason':'stop','total_duration':1,'load_duration':1,'prompt_eval_count':3,'prompt_eval_duration':1,'eval_count':1,'eval_duration':1},request=request)
     raise AssertionError(f'unexpected path {request.url.path}')
-async def async_send(self,request,*args,**kwargs): return fake_response(request)
-def sync_send(self,request,*args,**kwargs): return fake_response(request)
+_orig_async_send=httpx.AsyncClient.send
+_orig_sync_send=httpx.Client.send
+async def async_send(self,request,*args,**kwargs):
+    if request.url.host == 'mock.invalid': return fake_response(request)
+    return await _orig_async_send(self,request,*args,**kwargs)
+def sync_send(self,request,*args,**kwargs):
+    if request.url.host == 'mock.invalid': return fake_response(request)
+    return _orig_sync_send(self,request,*args,**kwargs)
 httpx.AsyncClient.send=async_send; httpx.Client.send=sync_send
 
 redis_host=os.environ.get('REDIS_HOST','127.0.0.1')
