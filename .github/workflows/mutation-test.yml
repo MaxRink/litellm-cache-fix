@@ -77,7 +77,7 @@ jobs:
 
       - name: Generate Prisma client
         run: |
-          uv run --no-project --with prisma==0.11.0 prisma generate --schema litellm/proxy/schema.prisma
+          uvx --from prisma==0.11.0 prisma generate --schema litellm/proxy/schema.prisma
 
       # mutmut 3.x runs tests inside a `mutants/` sandbox where it injects
       # mutation trampolines. uv installs the project as editable by default,
