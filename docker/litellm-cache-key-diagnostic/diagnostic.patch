@@ -1,0 +1,112 @@
+--- /private/tmp/d544-base/base-d544-1227bd.caching.py	2026-10-10 06:31:33
++++ /private/tmp/diag-overlay/caching.py	2026-10-10 06:25:31
+@@ -11,6 +11,7 @@
+ import hashlib
+ import json
+ import logging
++import os
+ import time
+ import traceback
+ from collections.abc import Mapping
+@@ -39,6 +40,8 @@
+ from .redis_semantic_cache import RedisSemanticCache
+ from .s3_cache import S3Cache
+ 
++_cache_key_diagnostic_calls: dict[str, tuple[float, int]] = {}
++
+ if TYPE_CHECKING:
+     from litellm.rust_bridge.response_cache import NativeCacheRequest, ResponseCacheRuntime
+ 
+@@ -357,7 +360,84 @@
+             for field in self._semantic_cache_scope_fields()
+         )
+         return "".join(f"{field}: {value}" for field, value in scope_values if value is not None)
++
++    @staticmethod
++    def _redact_cache_diagnostic_value(value: object) -> object:
++        if isinstance(value, Mapping):
++            blocked = {"api_key", "authorization", "headers", "key", "password", "secret", "token"}
++            return {
++                str(k): Cache._redact_cache_diagnostic_value(v)
++                for k, v in value.items()
++                if str(k).lower() not in blocked
++            }
++        if isinstance(value, (list, tuple)):
++            return [Cache._redact_cache_diagnostic_value(v) for v in value]
++        return value
+ 
++    @staticmethod
++    def _emit_cache_key_diagnostic(*, cache_key: str, kwargs: Mapping[str, object]) -> None:
++        """Emit gated, hash-only traces correlated to one approved request."""
++        global _cache_key_diagnostic_calls
++        if os.getenv("LITELLM_CACHE_KEY_DIAGNOSTIC") != "1":
++            return
++        now = time.monotonic()
++        _cache_key_diagnostic_calls = {
++            call_hash: (expires, remaining)
++            for call_hash, (expires, remaining) in _cache_key_diagnostic_calls.items()
++            if expires > now and remaining > 0
++        }
++        call_id = kwargs.get("litellm_call_id")
++        if not isinstance(call_id, str) or not call_id:
++            return
++        call_hash = hashlib.sha256(call_id.encode()).hexdigest()[:16]
++        active = _cache_key_diagnostic_calls.get(call_hash)
++        metadata = kwargs.get("metadata")
++        metadata = metadata if isinstance(metadata, Mapping) else {}
++        alias = kwargs.get("user_api_key_alias") or metadata.get("user_api_key_alias")
++        messages = kwargs.get("messages")
++        try:
++            messages_hash = hashlib.sha256(
++                json.dumps(messages, sort_keys=True, separators=(",", ":"), default=str).encode()
++            ).hexdigest()[:16]
++        except Exception:
++            return
++        exact_canary = (
++            metadata.get("model_group") == "ha-local"
++            and alias == "paperless-gpt"
++            and messages_hash == "10ee9c833aa5c34b"
++        )
++        if not exact_canary and active is None:
++            return
++        if exact_canary:
++            _cache_key_diagnostic_calls[call_hash] = (now + 60.0, 2)
++        else:
++            _cache_key_diagnostic_calls[call_hash] = (active[0], active[1] - 1)
++        allowed = {
++            "model", "user", "temperature", "max_tokens", "stream",
++            "metadata", "litellm_params", "optional_params", "custom_llm_provider", "api_base",
++        }
++        selected: dict[str, str] = {}
++        for name, value in kwargs.items():
++            if name not in allowed:
++                continue
++            try:
++                encoded = json.dumps(
++                    Cache._redact_cache_diagnostic_value(value),
++                    sort_keys=True, default=str, separators=(",", ":")
++                ).encode()
++            except Exception:
++                encoded = repr(type(value)).encode()
++            selected[name] = hashlib.sha256(encoded).hexdigest()[:16]
++        payload = {
++            "event": "cache_key_diagnostic",
++            "scope": "paperless-gpt-ha-local-canary",
++            "field_names": list(selected),
++            "selected_hashes": selected,
++            "messages_scope_match": exact_canary,
++            "cache_key_hash": hashlib.sha256(cache_key.encode()).hexdigest()[:16],
++        }
++        verbose_logger.info("%s", json.dumps(payload, sort_keys=True, separators=(",", ":")))
++
+     def get_cache_key(self, **kwargs) -> str:
+         """
+         Get the cache key for the given arguments.
+@@ -404,6 +484,7 @@
+             hashed_cache_key,
+             len(cache_key),
+         )
++        self._emit_cache_key_diagnostic(cache_key=hashed_cache_key, kwargs=kwargs)
+         # Remove preset_cache_key from kwargs to avoid "got multiple values" TypeError
+         # when kwargs already contains preset_cache_key from upstream callers
+         kwargs_for_preset: Final = {k: v for k, v in kwargs.items() if k != "preset_cache_key"}
