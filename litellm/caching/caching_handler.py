@@ -1150,6 +1150,8 @@ class LLMCachingHandler:
         )
         parent_otel_span: Final = get_parent_otel_span_from_kwargs(new_kwargs)
         new_kwargs["parent_otel_span"] = parent_otel_span
+        if self.preset_cache_key is not None:
+            new_kwargs["cache_key"] = self.preset_cache_key
         # [OPTIONAL] ADD TO CACHE
         if self.should_store_result_in_cache(original_function=original_function, kwargs=new_kwargs):
             if (
@@ -1202,6 +1204,8 @@ class LLMCachingHandler:
                 args,
             )
         )
+        if self.preset_cache_key is not None:
+            new_kwargs["cache_key"] = self.preset_cache_key
 
         if self.should_store_result_in_cache(original_function=self.original_function, kwargs=new_kwargs):
             with response_cache_phase("set"):

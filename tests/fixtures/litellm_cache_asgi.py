@@ -59,7 +59,8 @@ async def _get(*args: object, **kwargs: Any) -> object:
 
 
 async def _add(*args: object, **kwargs: Any) -> object:
-    events.append({"op": "store", "key_hash": _hash(kwargs.get("cache_key")), "key": kwargs.get("cache_key")})
+    effective_key = kwargs.get("cache_key") or cache.get_cache_key(**kwargs)
+    events.append({"op": "store", "key_hash": _hash(effective_key), "key": effective_key})
     return await original_add(*args, **kwargs)
 
 
