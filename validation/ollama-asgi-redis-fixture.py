@@ -8,7 +8,6 @@ import litellm
 from litellm import Router
 from litellm.caching.caching import Cache
 from litellm.proxy._types import UserAPIKeyAuth
-from litellm.types.proxy.management_endpoints import LitellmUserRoles
 import importlib.util
 spec=importlib.util.spec_from_file_location('routing_audit','/run/routing_audit.py')
 routing_audit=importlib.util.module_from_spec(spec); spec.loader.exec_module(routing_audit)
@@ -36,7 +35,7 @@ httpx.AsyncClient.send=async_send; httpx.Client.send=sync_send
 redis_host=os.environ.get('REDIS_HOST','127.0.0.1')
 litellm.cache=Cache(type='redis',host=redis_host,port=6379,namespace='litellm-ollama-asgi-fixture',default_in_redis_ttl=120,socket_timeout=2,max_connections=2)
 router=Router(model_list=[{'model_name':'ha-local','litellm_params':{'model':'ollama_chat/qwen3:4b','api_base':'http://mock.invalid','api_key':'fixture','num_ctx':8192},'model_info':{'rpm':60}}],cache_responses=True,enable_pre_call_checks=False,num_retries=0)
-auth=UserAPIKeyAuth.model_validate({'api_key':'fixture','key_alias':'paperless-gpt','user_role':LitellmUserRoles.INTERNAL_USER,'team_id':'fixture-team','models':['ha-local']})
+auth=UserAPIKeyAuth.model_validate({'api_key':'fixture','key_alias':'paperless-gpt','user_role':'internal_user','team_id':'fixture-team','models':['ha-local']})
 app=FastAPI()
 @app.post('/v1/chat/completions')
 async def completion(request:Request):
