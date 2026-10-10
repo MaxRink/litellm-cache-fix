@@ -108,6 +108,7 @@ async def _request(
     *,
     cache_key: str | None = None,
     span: str | None = None,
+    preset_cache_key: str | None = None,
     cache_control: dict[str, object] | None = None,
 ) -> int:
     auth = UserAPIKeyAuth(
@@ -132,6 +133,10 @@ async def _request(
         body["parent_otel_span"] = span
     if cache_key is not None:
         body["cache_key"] = cache_key
+    if preset_cache_key is not None:
+        # Exercise the public request parser. If this internal-looking field is
+        # accepted, it must still be scoped by the authenticated caller.
+        body["litellm_params"] = {"preset_cache_key": preset_cache_key}
     if cache_control is not None:
         body["cache"] = cache_control
     response = await client.post(
@@ -170,6 +175,15 @@ async def main() -> None:
         statuses.append(await _request("caller-b", "tenant-b", client, cache_key=first_store))
         caller_b_spoof_isolated = provider_calls == calls_before_b + 1
 
+        # A distinct caller attempts the same spoof through the nested
+        # litellm_params preset slot, which get_cache_key historically returns
+        # before namespace construction.
+        calls_before_preset_spoof = provider_calls
+        statuses.append(
+            await _request("caller-c", "tenant-c", client, preset_cache_key=first_store)
+        )
+        preset_spoof_isolated = provider_calls == calls_before_preset_spoof + 1
+
         # Populate first; no-cache must bypass that existing entry.
         no_cache_key = "no-cache-key"
         statuses.append(await _request("caller-a", "tenant-a", client, cache_key=no_cache_key))
@@ -199,6 +213,7 @@ async def main() -> None:
         all(status == 200 for status in statuses)
         and same_caller_reused
         and caller_b_spoof_isolated
+        and preset_spoof_isolated
         and no_cache_called_provider
         and no_store_called_provider
         and generated_a_reused
@@ -215,6 +230,7 @@ async def main() -> None:
                 "generated_b_reused": generated_b_reused,
                 "same_caller_reused": same_caller_reused,
                 "caller_b_spoof_isolated": caller_b_spoof_isolated,
+                "preset_spoof_isolated": preset_spoof_isolated,
                 "no_cache_called_provider": no_cache_called_provider,
                 "no_cache_events": [
                     {key: event[key] for key in ("op", "hit", "key_hash") if key in event}
