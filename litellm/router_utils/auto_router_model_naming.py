@@ -319,6 +319,11 @@ def claimed_capabilities(complexity_router_config: object) -> tuple[GatedAutoRou
     )
 
 
+def claimed_capability(complexity_router_config: object) -> GatedAutoRouterCapability | None:
+    """The first licensed capability this complexity config claims, or None."""
+    return next(iter(claimed_capabilities(complexity_router_config)), None)
+
+
 def gated_capabilities_of(litellm_params: Mapping[str, object]) -> tuple[GatedAutoRouterCapability, ...]:
     """The licensed capabilities this deployment claims, or empty unless it is a complexity router."""
     model: Final = litellm_params.get("model")
