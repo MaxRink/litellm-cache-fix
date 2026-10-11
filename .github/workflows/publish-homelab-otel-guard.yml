@@ -20,7 +20,9 @@ jobs:
       TAG: sha-${{ github.sha }}
       BASE_IMAGE: ghcr.io/maxrink/homelab-litellm-otel-guard@sha256:ff115da7fdf79dc9ba34ef481b791729bd329767ede1093369d3cbc05ded59c1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
       - name: Log in to GHCR
         run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
         env:
