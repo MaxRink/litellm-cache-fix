@@ -20,9 +20,7 @@ if TYPE_CHECKING:
 TEST_IMAGE_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAgAAAAIACAIAAAB7GkOtAAAJk0lEQVR42u3VQREAIRADwVWCOmTjBVzwSLorCri6nbkAVBpPACAAAAgAAAIAgAAAIAAACAAAAgCAAAAgAAAIAAACAIAAACAAAAgAAAIAgAAAIAAACAAAAgCAAAAgAAAIAAACACAAAAgAAAIAgAAAIAAACAAAAgCAAAAgAAAIAAACAIAAACAAAAgAAAIAgAAAIAAACAAAAgCAAAAgAAAIAAACACAAAAgAAAIAgAAAIAAACAAAAgCAAAAgAAAIAAACAIAAACAAAAgAAAIAgAAAIAAACAAAAgCAAAAgAAAIAAACAIAAAAgAAAIAgAAAIAAACAAAAgCAAAAgAAAIAAACAIAAACAAAAgAAAIAgAAAIAAACAAAAgCAAAAgAAAIAAACAIAAAAgAAAIAZdY+HgEBgIRr/meeGgGA8EMvDAgAuPh6gACAi68HCAA4+mKAAICjLwYIALj7SoAAgLuvBAgA7r4pAQKAu29KgADg7psSIAA4/SYDCADuvikBAoDTbzKAAOD0mwwgADj9JgMIAE6/yQACgNNvMoAA4PSbDCAAOP0mAwgATr/JAAKA668BIAA4/TKAAOD0mwwgALj+pgEIAE6/yQACgOtvGoAA4PSbDCAAuP6mAQgATr/JAAKA628agADg9JsMIAC4/qYBCACuv2kAAoDrbxqAAOD0mwwgALj+pgEIAK6/aQACgOtvGoAA4PqbBiAArr+ZBiAATr+ZDCAArr+ZBiAArr+ZBiAArr+ZBiAArr+ZBggArr+ZBggArr+ZBggArr+ZBggArr+ZBggArr+ZBggArr+ZBggAAmAmAAKA62+mAQKA62+mAQKA62/m1xYAXH/TAAQA1980AAHA9TcNQAAEwEwAEADX30wDEADX30wDEADX30wDEADX30wDEAABMBMABMD1N9MABMD1N9MABEAAzAQAAXD9zTQAAXD9zTRAABAAMwEQAFx/Mw0QAFx/Mw0QAATATAAEANffTAMEANffTAMEAAEwEwABwPU30wABQADMBEAAXH8z0wABcP3NTAMEQADMTAAEwPU3Mw0QAAEwMwEQANffTAMQAAEwEwAEwPU30wAEQADMBAABcP3NNAABEAAzAUAAXH8zDUAABMBMABAA199MAwQAATATAAHA9TfTAAFAAMwEQABw/c00QAAQADMBEAAEwEwABMD1NzMNEAABMDMBEADX38w0QAAEwMwEQAAEwMwEQABcfzPTAAEQADMTAAEQADMTAAFw/c1MAwRAAMxMAARAAMxMAATA9TczDRAAATATAARAAMwEAAFw/c00AAEQADMBQAAEwEwAEADX30wDBAABMBMAAUAAzARAABAAMwEQAFx/Mw0QAAEwMwEQAAEwMwEQAAEwMwEQANffzDRAAATAzARAAATAzARAAATAzARAAATAzARAAFx/M9MAARAAMxMAARAAMxMAARAAMxMAARAAMxMAAXD9zUwDBEAAzEwABEAAzAQAARAAMwFAAATATAAQAAEwEwABQADMBEAAEAAzARAAXH8zDRAAATAzARAAATAzARAAATAzARAAATAzARAAATAzARAAATAzARAAATAzARAAATAzARAAATAzARAAATAzARAAATAzARAAATAzARAAATAzARAAATAzARAAATAzARAAATAzARAA19/MNEAANMDM9UcABMBMABAAATATAAHwBAJgJgACgACYCYAAIABmAiAA+IvMBEAABMDMBEAABMDMBEAABMDMBEAABMDMBEAABMDMBEAABMDMBEAABMDMBEAABMDMBEAABMDMBEAABMDMBEAANMDMXH8BEAAzEwABEAAzEwABEAAzEwABEAAzEwABEAAzEwABEAAzAUAABMBMABAADTBz/REAATATAAFAAMwEQAAQADMBEAAEwEwABAANMHP9BUAAzEwABEAAzEwABEAAzEwABEAAzEwABEADzMz1FwABMDMBEAABMDMBEAABMDMBEAANMDPXXwAEwMwEQAAEwMwEQAAEwMwEQAA0wMxcfwEQADMTAAEQADMBQAA0wMz1RwAEwEwAEAABMBMABEADzFx/AUAAzARAABAAMwEQADTAzPUXAATATAAEAAEwEwABQAPMXH8BEAAzEwABEAAzEwAB0AAzc/0FQADMTAAEQAPMzPUXAAEwMwEQAAEwMwEQAA0wM9dfAATAzARAADTAzFx/ARAAMwFAADTAzPVHAATATAAQAA0wc/0RAAEwEwAEQAPMXH8EQADMBAAB0AAz118AEAAzARAANMDM9RcABMBMAAQADTBz/QUAATATAAFAA8xcfwFAA8xcfwFAAMwEQADQADPXXwAEwMwEQAA0wMxcfwHQADNz/QVAAMxMAARAA8xcfwRAA8xcfwRAAMwEAAHQADPXHwHQADPXHwEQADMBQAA0wMz1RwA0wMz1RwAEwEwAEAANMHP9BQANMHP9BQANMHP9BQANMHP9BQABMBMAAUADzFx/AUADzFx/AUADzFx/AUADzFx/AUADzFx/AUADzPVHABAAEwAEAA0w1x8BQAPM9UcA0ABz/REANMBcfwQADTDXHwHQADPXHwHQADPXHwHQADPXHwHQADPXHwHQADPXHwGQATOnHwHQADPXHwHQADPXXwDQADPXXwDQADPXXwDQADPXXwCQAXP6EQA0wFx/BAANMNcfAUADzPVHAJABc/oRADTAXH8EABkwpx8BQAPM9UcAkAFz+hEANMBcfwQAGTCnHwFAA8z1RwCQAXP6EQBkwJx+BAANMNcfAUAGzOlHAJABc/oRAGTA6QcBQAacfhAAZMDpRwBABpx+BABkwOlHAEAGnH4EAJTA3UcAQAacfgQAlMDdRwBACdx9BACUwN1HAEAJ3H0EAJTA3UcAQAwcfQQAmmLgsyIA0NIDHw4BgJYe+DQIAISHwVMjAJDQDI+AAAAgAAAIAAACAIAAACAAAAgAAAIAgAAAIAAACAAAAgCAAAAgAAAIAAACAIAAACAAAAgAAAIAgAAAIAAACACAAAAgAAAIAAACAIAAACAAAAgAAAIAgAAAIAAACAAAAgCAAAAgAAAIAAACAIAAACAAAAgAAAIAgAAAIAAACAAAAgAgAAAIAAACAIAAACAAAAgAAAIAgAAAIAAACAAAAgCAAAAgAAAIAAACAIAAACAAAAgAAAIAgAAAIAAACAAAAgAgAAAIAAACAIAAACAAAAgAAAIAgAAAIAAACAAAAgCAAAAgAAAIAAACAIAAACAAAAgAAAIAgAAAIAAACAAAAgCAAAAIAABNHpialFcmLajuAAAAAElFTkSuQmCC"
 
 
-IMAGE_EDIT_HEALTH_CHECK_PROMPT: Final = (
-    "Add a small yellow star in the top right corner of this simple drawing of a blue circle on a white background"
-)
+IMAGE_EDIT_HEALTH_CHECK_PROMPT: Final = "Add a small yellow star in the top right corner of this simple drawing of a blue circle on a white background"
 
 
 def get_image_file_for_health_check() -> bytes:
@@ -30,18 +28,33 @@ def get_image_file_for_health_check() -> bytes:
     return base64.b64decode(TEST_IMAGE_BASE64)
 
 
-def _decisions_health_check_questions(model: str, custom_llm_provider: str) -> Mapping[str, Mapping[str, object]]:
+def _decisions_health_check_questions(
+    model: str, custom_llm_provider: str
+) -> Mapping[str, Mapping[str, object]]:
     import litellm
     from litellm.llms.base_llm.decisions.transformation import BaseDecisionsConfig
     from litellm.utils import ProviderConfigManager
 
-    provider: Final = next((member for member in litellm.LlmProviders if member.value == custom_llm_provider), None)
+    provider: Final = next(
+        (
+            member
+            for member in litellm.LlmProviders
+            if member.value == custom_llm_provider
+        ),
+        None,
+    )
     config: Final = (
         None
         if provider is None
-        else ProviderConfigManager.get_provider_decisions_config(model=model, provider=provider)
+        else ProviderConfigManager.get_provider_decisions_config(
+            model=model, provider=provider
+        )
     )
-    questions: Final = BaseDecisionsConfig.health_check_questions if config is None else config.health_check_questions
+    questions: Final = (
+        BaseDecisionsConfig.health_check_questions
+        if config is None
+        else config.health_check_questions
+    )
     return {name: dict(question) for name, question in questions.items()}
 
 
@@ -68,19 +81,25 @@ class HealthCheckHelpers:
         )
 
         # this is a wildcard model, we need to pick a random model from the provider
-        cheapest_models = pick_cheapest_chat_models_from_llm_provider(custom_llm_provider=custom_llm_provider, n=3)
+        cheapest_models = pick_cheapest_chat_models_from_llm_provider(
+            custom_llm_provider=custom_llm_provider, n=3
+        )
         if len(cheapest_models) == 0:
             raise Exception(
                 f"Unable to health check wildcard model for provider {custom_llm_provider}. Add a model on your config.yaml or contribute here - https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json"
             )
         if len(cheapest_models) > 1:
-            fallback_models = cheapest_models[1:]  # Pick the last 2 models from the shuffled list
+            fallback_models = cheapest_models[
+                1:
+            ]  # Pick the last 2 models from the shuffled list
         else:
             fallback_models = None
         model_params["model"] = cheapest_models[0]
         model_params["litellm_logging_obj"] = litellm_logging_obj
         model_params["fallbacks"] = fallback_models
-        model_params["max_tokens"] = model_params.get("max_tokens", 16)  # GPT-5 models require max_output_tokens >= 16
+        model_params["max_tokens"] = model_params.get(
+            "max_tokens", 16
+        )  # GPT-5 models require max_output_tokens >= 16
         await acompletion(**model_params)
         return {}
 
@@ -100,7 +119,9 @@ class HealthCheckHelpers:
         from litellm.proxy.litellm_pre_call_utils import LiteLLMProxyRequestSetup
 
         _metadata_variable_name: Final = "litellm_metadata"
-        litellm_metadata: Final = HealthCheckHelpers._get_metadata_for_health_check_call()
+        litellm_metadata: Final = (
+            HealthCheckHelpers._get_metadata_for_health_check_call()
+        )
         model_params[_metadata_variable_name] = litellm_metadata
         model_params = LiteLLMProxyRequestSetup.add_user_api_key_auth_to_request_metadata(
             data=model_params,
@@ -148,16 +169,22 @@ class HealthCheckHelpers:
 
         if custom_llm_provider not in LIST_BATCHES_SUPPORTED_PROVIDERS:
             return await litellm.acompletion(**model_params)
-        return await litellm.alist_batches(**{**filtered_model_params, "custom_llm_provider": custom_llm_provider})
+        return await litellm.alist_batches(
+            **{**filtered_model_params, "custom_llm_provider": custom_llm_provider}
+        )
 
     @staticmethod
-    async def _image_edit_health_check(edit_request: Callable[[], Awaitable["ImageResponse"]]) -> "ImageResponse":
+    async def _image_edit_health_check(
+        edit_request: Callable[[], Awaitable["ImageResponse"]],
+    ) -> "ImageResponse":
         import litellm
 
         try:
             return await edit_request()
         except litellm.BadRequestError as e:
-            if isinstance(e, litellm.ContentPolicyViolationError) or "moderation_blocked" in str(e):
+            if isinstance(
+                e, litellm.ContentPolicyViolationError
+            ) or "moderation_blocked" in str(e):
                 return litellm.ImageResponse()
             raise
 
@@ -206,7 +233,10 @@ class HealthCheckHelpers:
         from litellm.litellm_core_utils.audio_utils.utils import (
             get_audio_file_for_health_check,
         )
-        from litellm.litellm_core_utils.health_check_utils import DECISIONS_CALL_PARAMS, _filter_model_params
+        from litellm.litellm_core_utils.health_check_utils import (
+            DECISIONS_CALL_PARAMS,
+            _filter_model_params,
+        )
         from litellm.realtime_api.main import _realtime_health_check
 
         return {
@@ -224,7 +254,12 @@ class HealthCheckHelpers:
             "audio_speech": lambda: litellm.aspeech(
                 **{
                     **_filter_model_params(model_params=model_params),
-                    **({"voice": "alloy"} if "voice" not in _filter_model_params(model_params=model_params) else {}),
+                    **(
+                        {"voice": "alloy"}
+                        if "voice"
+                        not in _filter_model_params(model_params=model_params)
+                        else {}
+                    ),
                 },
                 input=prompt or "test",
             ),
@@ -271,7 +306,9 @@ class HealthCheckHelpers:
             ),
             "ocr": lambda: litellm.aocr(
                 **_filter_model_params(model_params=model_params),
-                document=_ocr_health_check_document(model=model, custom_llm_provider=custom_llm_provider),
+                document=_ocr_health_check_document(
+                    model=model, custom_llm_provider=custom_llm_provider
+                ),
             ),
             "evaluation": lambda: litellm.asystemone(
                 **DECISIONS_CALL_PARAMS.validate_python(
@@ -287,8 +324,11 @@ class HealthCheckHelpers:
         }
 
 
-def native_health_check_mode(model: str, custom_llm_provider: str | None) -> Literal["anthropic_messages"] | None:
+def native_health_check_mode(
+    model: str, custom_llm_provider: str | None
+) -> Literal["anthropic_messages"] | None:
     if custom_llm_provider != "bedrock_mantle":
         return None
     from litellm.llms.bedrock_mantle.common_utils import mantle_health_check_mode
+
     return mantle_health_check_mode(model)
