@@ -342,6 +342,7 @@ jobs:
               tests/unit/llms/searxng
               tests/unit/llms/serper
               tests/unit/llms/snowflake
+              tests/unit/llms/strands_decider/decisions
               tests/unit/llms/soniox
               tests/unit/llms/stability
               tests/unit/llms/tavily
@@ -382,6 +383,7 @@ jobs:
           - shard: root
             test-path: >-
               tests/test_litellm/test_*.py
+              tests/unit/systemone
               tests/unit/test_*.py
             python-version: "3.12"
             workers: 4
