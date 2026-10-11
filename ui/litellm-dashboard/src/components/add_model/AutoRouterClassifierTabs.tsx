@@ -91,6 +91,7 @@ export function ClassifierMenu({
   feature?: string;
   onValueChange: (value: string) => void;
   children: React.ReactNode;
+  decisionModel?: React.ReactNode;
 }) {
   return (
     <DropdownMenu>
@@ -120,9 +121,15 @@ interface AutoRouterClassifierTabsProps {
   value: ComplexityRouterConfigValue;
   onChange: (value: ComplexityRouterConfigValue) => void;
   children: React.ReactNode;
+  decisionModel?: React.ReactNode;
 }
 
-const AutoRouterClassifierTabs: React.FC<AutoRouterClassifierTabsProps> = ({ value, onChange, children }) => {
+const AutoRouterClassifierTabs: React.FC<AutoRouterClassifierTabsProps> = ({
+  value,
+  onChange,
+  children,
+  decisionModel,
+}) => {
   const id = useId();
   const availability = useContext(AutoRouterAvailabilityContext);
   const classifierType = effectiveClassifierType(value);
@@ -221,6 +228,7 @@ const AutoRouterClassifierTabs: React.FC<AutoRouterClassifierTabsProps> = ({ val
           </RadioGroup>
         </fieldset>
       )}
+      {family === "jev" && decisionModel}
       {family === "custom" && (
         <p className="text-sm text-muted-foreground">This router uses a custom classifier plugin</p>
       )}
