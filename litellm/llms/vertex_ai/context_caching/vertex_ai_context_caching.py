@@ -354,10 +354,8 @@ class ContextCachingEndpoints(VertexBase):
             object, optional_params.pop("tools", None)
         )
         tools: Final[Tools | None] = (
-            cast(  # cast-ok: runtime dictionary check precedes provider conversion
-                Tools, tools_value
-            )
-            if isinstance(tools_value, dict)
+            cast(Tools, tools_value)  # cast-ok: provider tools are dynamically typed
+            if tools_value is not None
             else None
         )
         tool_choice_value: Final[object] = cast(  # cast-ok: provider options are dynamically typed
@@ -547,10 +545,8 @@ class ContextCachingEndpoints(VertexBase):
             object, optional_params.pop("tools", None)
         )
         tools: Final[Tools | None] = (
-            cast(  # cast-ok: runtime dictionary check precedes provider conversion
-                Tools, tools_value
-            )
-            if isinstance(tools_value, dict)
+            cast(Tools, tools_value)  # cast-ok: provider tools are dynamically typed
+            if tools_value is not None
             else None
         )
         tool_choice_value: Final[object] = cast(  # cast-ok: provider options are dynamically typed

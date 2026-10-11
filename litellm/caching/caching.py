@@ -569,7 +569,7 @@ class Cache:
 
     def _get_caching_group(self, metadata: Mapping[str, object], model_group: str | None) -> str | None:
         caching_groups_value = metadata.get("caching_groups")  # rebind-ok: dynamic metadata value is narrowed below
-        if not isinstance(caching_groups_value, list):
+        if not isinstance(caching_groups_value, (list, tuple)):
             return None
         caching_groups: Final[list[object]] = list(caching_groups_value)  # mutable-ok: provider list
         for group in caching_groups:
