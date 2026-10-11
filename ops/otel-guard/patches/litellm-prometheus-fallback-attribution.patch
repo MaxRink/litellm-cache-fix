@@ -1,0 +1,36 @@
+--- a/litellm/integrations/prometheus.py
++++ b/litellm/integrations/prometheus.py
+@@ -3688,8 +3688,14 @@
+             original_model_group,
+             kwargs,
+         )
+-        _metadata_key: Final = get_metadata_variable_name_from_kwargs(kwargs)
+-        _metadata: Final = kwargs.get(_metadata_key) or {}
++        # Router fallback callbacks receive request metadata in either the
++        # legacy top-level field or the modern ``litellm_params`` bucket.
++        # Prefer the canonical extractor so proxy callers remain attributed
++        # when the router forwards modern request kwargs, while retaining the
++        # legacy SDK shape and its no-caller semantics.
++        _metadata: Final = get_litellm_metadata_from_kwargs(kwargs) or kwargs.get(
++            get_metadata_variable_name_from_kwargs(kwargs)
++        ) or {}
+         standard_metadata: Final[StandardLoggingMetadata] = StandardLoggingPayloadSetup.get_standard_logging_metadata(
+             metadata=_metadata
+         )
+@@ -3730,8 +3736,14 @@
+             kwargs,
+         )
+         _new_model: Final = kwargs.get("model")
+-        _metadata_key: Final = get_metadata_variable_name_from_kwargs(kwargs)
+-        _metadata: Final = kwargs.get(_metadata_key) or {}
++        # Router fallback callbacks receive request metadata in either the
++        # legacy top-level field or the modern ``litellm_params`` bucket.
++        # Prefer the canonical extractor so proxy callers remain attributed
++        # when the router forwards modern request kwargs, while retaining the
++        # legacy SDK shape and its no-caller semantics.
++        _metadata: Final = get_litellm_metadata_from_kwargs(kwargs) or kwargs.get(
++            get_metadata_variable_name_from_kwargs(kwargs)
++        ) or {}
+         _tags: Final = cast(list[str], kwargs.get("tags") or [])
+         standard_metadata: Final[StandardLoggingMetadata] = StandardLoggingPayloadSetup.get_standard_logging_metadata(
+             metadata=_metadata

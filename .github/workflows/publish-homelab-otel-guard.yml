@@ -1,0 +1,52 @@
+name: publish homelab OTEL guard
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-homelab-otel-guard
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      IMAGE: ghcr.io/maxrink/litellm-cache-fix-otel-guard
+      TAG: sha-${{ github.sha }}
+      BASE_IMAGE: ghcr.io/maxrink/homelab-litellm-otel-guard@sha256:ff115da7fdf79dc9ba34ef481b791729bd329767ede1093369d3cbc05ded59c1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build pinned sanitized guard image
+        run: docker build --pull=true --no-cache --file ops/otel-guard/Dockerfile --tag "$IMAGE:$TAG" ops/otel-guard
+      - name: Compile patched module and run callback smoke test
+        run: |
+          docker run --rm --network none --entrypoint python "$IMAGE:$TAG" -m py_compile /app/.venv/lib/python3.13/site-packages/litellm/integrations/prometheus.py
+          docker cp "$(docker create --name guard-fixture "$IMAGE:$TAG"):/app/.venv/lib/python3.13/site-packages/litellm/integrations/prometheus.py" /tmp/prometheus.py
+          docker rm guard-fixture >/dev/null
+          test "$(sha256sum /tmp/prometheus.py | cut -d' ' -f1)" = "cf4093a37a7fe18cbaab6a06d86e792fab5a7b528c3135d552d2b2b86353608f"
+      - name: Verify offline cache fixtures
+        run: |
+          docker run --rm -i --network none --entrypoint python "$IMAGE:$TAG" - < ops/otel-guard/tests/litellm_cache_asgi.py
+          docker run --rm -i --network none --entrypoint python "$IMAGE:$TAG" - < ops/otel-guard/tests/litellm_cache_namespace.py
+          docker run --rm -i --network none --entrypoint python "$IMAGE:$TAG" - < ops/otel-guard/tests/callback_smoke.py
+      - name: Verify provenance labels
+        run: |
+          test "$(docker inspect --format='{{index .Config.Labels "org.opencontainers.image.base.digest"}}' "$IMAGE:$TAG")" = "${BASE_IMAGE##*@}"
+          test "$(docker inspect --format='{{index .Config.Labels "com.maxrink.patch.prometheus.sha256"}}' "$IMAGE:$TAG")" = "cf4093a37a7fe18cbaab6a06d86e792fab5a7b528c3135d552d2b2b86353608f"
+      - name: Push and record immutable digest
+        id: push
+        run: |
+          docker push "$IMAGE:$TAG"
+          digest="$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE:$TAG" | sed 's#^.*@##')"
+          test -n "$digest"
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+          echo "Published $IMAGE@$digest"
