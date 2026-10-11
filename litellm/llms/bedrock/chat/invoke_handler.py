@@ -785,7 +785,7 @@ class AWSEventStreamDecoder:
         if undecoded_stream_error is not None:
             raise undecoded_stream_error
 
-    def _parse_message_from_event(self, event) -> str | None:
+    def _parse_message_from_event(self, event: "EventStreamMessage") -> str | None:
         response_stream_shape: Final = get_bedrock_response_stream_shape()
         if response_stream_shape is None:
             raise BedrockError(
