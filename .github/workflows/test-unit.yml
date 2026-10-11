@@ -25,6 +25,7 @@ jobs:
       pull-requests: read
     outputs:
       artifact: ${{ steps.rust-bridge-artifact.outputs.name }}
+      decision: ${{ steps.changes.outputs.decision }}
     runs-on: ubuntu-latest
     env:
       UV_PYTHON: "3.12"
@@ -122,7 +123,7 @@ jobs:
   unit:
     name: ${{ matrix.shard }}
     needs: [rust-bridge, assert-shard-coverage]
-    if: ${{ !cancelled() }}
+    if: ${{ needs.rust-bridge.outputs.decision == 'run' && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.job-timeout-minutes }}
     permissions:
