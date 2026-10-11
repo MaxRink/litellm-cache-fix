@@ -1,5 +1,6 @@
 import { AutoRouterAvailabilityContext, useAutoRouterAvailability } from "./AutoRouterAvailability";
 import AutoRouterClassifierTabs from "./AutoRouterClassifierTabs";
+import DecisionModelSelect from "./DecisionModelSelect";
 import { getForecastConfigError, isForecastClassifier } from "../add_model/forecast_classifier_config";
 import React, { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -610,7 +611,18 @@ const AddAutoRouterTab: React.FC<AddAutoRouterTabProps> = ({
                 </FormField>
               )}
 
-              <AutoRouterClassifierTabs value={complexityRouterConfig} onChange={handleClassifierChange}>
+              <AutoRouterClassifierTabs
+                value={complexityRouterConfig}
+                onChange={handleClassifierChange}
+                decisionModel={
+                  <DecisionModelSelect
+                    value={complexityRouterConfig}
+                    onChange={setComplexityRouterConfig}
+                    modelInfo={modelInfo}
+                    deployments={deployments}
+                  />
+                }
+              >
                 <FieldGroup>
                   <div className="space-y-4 empty:hidden">
                     {!forecast && (

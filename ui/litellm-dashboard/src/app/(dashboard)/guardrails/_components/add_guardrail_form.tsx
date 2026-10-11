@@ -21,6 +21,7 @@ import {
   populateGuardrailProviderMap,
   populateGuardrailProviders,
   shouldRenderContentFilterConfigSettings,
+  shouldRenderDecisionModelFields,
   shouldRenderLLMJudgeFields,
   shouldRenderPIIConfigSettings,
   streamScopePayload,
@@ -63,6 +64,17 @@ import {
 import GuardrailOptionalParams from "./guardrail_optional_params";
 import GuardrailProviderFields from "./guardrail_provider_fields";
 import LLMJudgeFields from "./llm_judge/LLMJudgeFields";
+import DecisionModelFields from "./decision_model/DecisionModelFields";
+import {
+  buildDecisionModelParams,
+  decisionChecksProblem,
+  type DecisionModelCheckDraft,
+} from "./decision_model/buildDecisionModelParams";
+import {
+  decisionModelOptions,
+  parseDecisionModelGroups,
+  type DecisionModelGroup,
+} from "./decision_model/decisionModelQuestion";
 import PiiConfiguration from "./pii_configuration";
 import ToolPermissionRulesEditor, { ToolPermissionConfig } from "./tool_permission/ToolPermissionRulesEditor";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -102,6 +114,7 @@ interface GuardrailSettings {
   supported_modes: string[];
   supported_modes_by_provider?: Record<string, string[]>;
   providers_without_directional_logging_only_scope?: string[];
+  decision_model_providers?: string[];
   pii_entity_categories: Array<{
     category: string;
     entities: string[];
@@ -237,6 +250,9 @@ const AddGuardrailForm: React.FC<AddGuardrailFormProps> = ({ visible, onClose, a
   const [realtimeViolationMessage, setRealtimeViolationMessage] = useState<string>("");
   const [endpointSettingsOpen, setEndpointSettingsOpen] = useState<boolean>(false);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [decisionModelGroups, setDecisionModelGroups] = useState<DecisionModelGroup[]>([]);
+  const [decisionProvider, setDecisionProvider] = useState<string | null>(null);
+  const [decisionChecks, setDecisionChecks] = useState<DecisionModelCheckDraft[]>([]);
 
   const [toolPermissionConfig, setToolPermissionConfig] = useState<ToolPermissionConfig>(
     createEmptyToolPermissionConfig,
@@ -250,6 +266,15 @@ const AddGuardrailForm: React.FC<AddGuardrailFormProps> = ({ visible, onClose, a
     return (providerValue || "").toLowerCase() === "tool_permission";
   }, [selectedProvider]);
   const directionalScopeSupported = supportsDirectionalLoggingOnlyScope(guardrailSettings, selectedProvider);
+  const isDecisionModelProvider = useMemo(() => shouldRenderDecisionModelFields(selectedProvider), [selectedProvider]);
+  const decisionModels = useMemo(
+    () =>
+      decisionModelOptions(guardrailSettings?.decision_model_providers ?? [], decisionModelGroups, decisionProvider),
+    [guardrailSettings, decisionModelGroups, decisionProvider],
+  );
+  const revalidateDecisionModel = () => {
+    if (form.getFieldState("decision_model").error) void form.trigger("decision_model");
+  };
 
   // Fetch guardrail UI settings + provider params on mount / accessToken change
   useEffect(() => {
@@ -267,7 +292,8 @@ const AddGuardrailForm: React.FC<AddGuardrailFormProps> = ({ visible, onClose, a
         setGuardrailSettings(uiSettings);
         setProviderParams(providerParamsResp);
         if (modelsResp?.data) {
-          setAvailableModels(modelsResp.data.map((m: { id: string }) => m.id));
+          setAvailableModels(modelsResp.data.map((m: { id: string }) => m.id).filter(Boolean));
+          setDecisionModelGroups(parseDecisionModelGroups(modelsResp.data));
         }
 
         // Populate dynamic providers from API response
@@ -288,6 +314,7 @@ const AddGuardrailForm: React.FC<AddGuardrailFormProps> = ({ visible, onClose, a
 
     // Set provider
     setSelectedProvider(preset.provider);
+    setDecisionProvider(null);
     const baseValues: Record<string, unknown> = {
       provider: preset.provider,
       guardrail_name: preset.guardrailNameSuggestion,
@@ -362,6 +389,8 @@ const AddGuardrailForm: React.FC<AddGuardrailFormProps> = ({ visible, onClose, a
     setCompetitorIntentConfig(null);
 
     setToolPermissionConfig(createEmptyToolPermissionConfig());
+    setDecisionChecks([]);
+    setDecisionProvider(null);
 
     // Default LLM-as-a-Judge to post_call mode
     if (value === "LlmAsAJudge") {
@@ -399,6 +428,14 @@ const AddGuardrailForm: React.FC<AddGuardrailFormProps> = ({ visible, onClose, a
 
     // Validate configuration steps
     if (currentStep === 1) {
+      if (isDecisionModelProvider && !(await form.trigger(["decision_model"]))) return;
+      if (isDecisionModelProvider) {
+        const problem = decisionChecksProblem(decisionChecks);
+        if (problem) {
+          toast.fromError(problem);
+          return;
+        }
+      }
       if (shouldRenderPIIConfigSettings(selectedProvider) && selectedEntities.length === 0) {
         toast.fromError("Please select at least one PII entity to continue");
         return;
@@ -582,6 +619,18 @@ const AddGuardrailForm: React.FC<AddGuardrailFormProps> = ({ visible, onClose, a
         }
       }
 
+      if (guardrailProvider === "decision_model") {
+        const problem = decisionChecksProblem(decisionChecks);
+        if (problem) {
+          toast.fromError(problem);
+          setLoading(false);
+          return;
+        }
+        const decisionParams = buildDecisionModelParams(asText(values.decision_model), decisionChecks);
+        guardrailData.litellm_params.decision_model = decisionParams.decision_model;
+        guardrailData.litellm_params.checks = decisionParams.checks;
+      }
+
       if (guardrailProvider === "llm_as_a_judge") {
         const criteria: GuardrailCriterion[] = values.criteria ?? [];
         if (criteria.length === 0) {
@@ -642,8 +691,8 @@ const AddGuardrailForm: React.FC<AddGuardrailFormProps> = ({ visible, onClose, a
        ******************************/
 
       // Use pre-fetched provider params to copy recognised params
-      // Skip for providers that handle their own litellm_params (llm_as_a_judge, tool_permission, content filter, PII)
-      if (providerParams && selectedProvider && guardrailProvider !== "llm_as_a_judge") {
+      // Skip for providers that handle their own litellm_params (llm_as_a_judge, tool_permission, content filter, PII, decision_model)
+      if (providerParams && selectedProvider && !["llm_as_a_judge", "decision_model"].includes(guardrailProvider)) {
         const providerKey = guardrail_provider_map[selectedProvider]?.toLowerCase();
         const providerSpecificParams = providerParams[providerKey] || {};
 
@@ -701,7 +750,8 @@ const AddGuardrailForm: React.FC<AddGuardrailFormProps> = ({ visible, onClose, a
     const showProviderFields =
       !isToolPermissionProvider &&
       !shouldRenderContentFilterConfigSettings(selectedProvider) &&
-      !shouldRenderLLMJudgeFields(selectedProvider);
+      !shouldRenderLLMJudgeFields(selectedProvider) &&
+      !isDecisionModelProvider;
     const providerLabels: Record<string, string> = getGuardrailProviders();
     const providerKeys = Object.keys(providerLabels);
     const supportedModes = getSupportedModesForProvider(guardrailSettings, selectedProvider) ?? DEFAULT_MODES;
@@ -951,6 +1001,19 @@ const AddGuardrailForm: React.FC<AddGuardrailFormProps> = ({ visible, onClose, a
         }
         if (shouldRenderLLMJudgeFields(selectedProvider)) {
           return <LLMJudgeFields availableModels={availableModels} control={form.control} />;
+        }
+        if (isDecisionModelProvider) {
+          return (
+            <DecisionModelFields
+              accessToken={accessToken}
+              providerFilter={decisionProvider}
+              onModelChange={revalidateDecisionModel}
+              decisionModels={decisionModels}
+              checks={decisionChecks}
+              onChecksChange={setDecisionChecks}
+              control={form.control}
+            />
+          );
         }
         return renderOptionalParams();
       case 2:

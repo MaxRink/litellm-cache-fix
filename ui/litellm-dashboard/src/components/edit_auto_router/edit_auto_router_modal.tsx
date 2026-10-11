@@ -1,5 +1,6 @@
 import { AutoRouterAvailabilityContext, useAutoRouterAvailability } from "../add_model/AutoRouterAvailability";
 import AutoRouterClassifierTabs from "../add_model/AutoRouterClassifierTabs";
+import DecisionModelSelect from "../add_model/DecisionModelSelect";
 import { usesClassifierContext } from "../add_model/classifier_types";
 export type { StoredComplexityRouterConfig } from "../add_model/build_complexity_router_config";
 import { getForecastConfigError, isForecastClassifier } from "../add_model/forecast_classifier_config";
@@ -635,7 +636,18 @@ const EditAutoRouterModal: React.FC<EditAutoRouterModalProps> = ({
                 {isComplexityRouterModel ? (
                   /* Complexity Router Configuration */
                   <div className="w-full">
-                    <AutoRouterClassifierTabs value={complexityRouterConfig} onChange={setComplexityRouterConfig}>
+                    <AutoRouterClassifierTabs
+                      value={complexityRouterConfig}
+                      onChange={setComplexityRouterConfig}
+                      decisionModel={
+                        <DecisionModelSelect
+                          value={complexityRouterConfig}
+                          onChange={setComplexityRouterConfig}
+                          modelInfo={modelInfo}
+                          deployments={undefined}
+                        />
+                      }
+                    >
                       <ComplexityRouterConfig
                         editingTiers={editingTiers}
                         onEditingTiersChange={setEditingTiers}

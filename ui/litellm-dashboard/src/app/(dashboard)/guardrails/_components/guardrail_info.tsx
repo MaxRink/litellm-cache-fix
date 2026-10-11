@@ -55,6 +55,7 @@ import GuardrailOptionalParams from "./guardrail_optional_params";
 import GuardrailProviderFields from "./guardrail_provider_fields";
 import PiiConfiguration from "./pii_configuration";
 import ToolPermissionRulesEditor, { ToolPermissionConfig } from "./tool_permission/ToolPermissionRulesEditor";
+import DecisionModelDetails from "./decision_model/DecisionModelDetails";
 
 const DEFAULT_ON_ITEMS = [
   { label: "Yes", value: true },
@@ -589,6 +590,7 @@ const GuardrailInfoView: React.FC<GuardrailInfoProps> = ({ guardrailId, onClose,
               </Card>
 
               <GuardrailModeCard litellmParams={guardrailData.litellm_params} />
+              <DecisionModelDetails litellmParams={guardrailData.litellm_params} />
               <GuardrailStreamScopeCaption raw={guardrailData.litellm_params?.stream_scope} />
 
               <Card className="block p-6">
