@@ -506,6 +506,14 @@ export const apiClient = createApiClient({
   onError: handleError,
 });
 
+export const decisionsTestCall = async (
+  accessToken: string,
+  body: { model: string; input: string; questions: Array<{ type: "predicate"; name: string; instructions: string }> },
+  signal?: AbortSignal,
+) => {
+  return apiClient.post("/decisions", { accessToken, body, signal });
+};
+
 registerBaseUrlGetter(getProxyBaseUrl);
 registerAuthHeaderNameGetter(getGlobalLitellmHeaderName);
 registerAuthTokenGetter(() => decodeToken(getCookie("token"))?.key ?? null);

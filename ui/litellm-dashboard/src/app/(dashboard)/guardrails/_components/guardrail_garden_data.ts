@@ -4,7 +4,7 @@ export interface GuardrailCardInfo {
   id: string;
   name: string;
   description: string;
-  category: "litellm" | "partner";
+  category: "litellm" | "decision_model" | "partner";
   subcategory?: string;
   logo: string;
   tags: string[];

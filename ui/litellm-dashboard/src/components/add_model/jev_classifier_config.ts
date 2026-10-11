@@ -7,6 +7,7 @@ export const OSS_CLASSIFIER_MODELS = {
 } as const;
 
 const jevClassifierConfigFields = {
+  deployment_name: z.string().trim().min(1).optional(),
   provider: z.preprocess(
     (value) => (value === "typesafe" ? "jev" : value),
     z.enum(["jev", "laya", "bespoke"]).optional(),
@@ -62,6 +63,7 @@ export const normalizeJevClassifierConfig = (
   provider: config.provider ?? "jev",
   model: config.model.trim(),
   timeout_ms: config.timeout_ms,
+  ...(config.deployment_name?.trim() && { deployment_name: config.deployment_name.trim() }),
   ...(config.instructions?.trim() && { instructions: config.instructions.trim() }),
   ...(config.circuit_breaker_enabled !== undefined && { circuit_breaker_enabled: config.circuit_breaker_enabled }),
   ...(config.circuit_breaker_cooldown_seconds !== undefined && {
