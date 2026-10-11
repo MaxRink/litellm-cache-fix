@@ -31,17 +31,11 @@ BEDROCK_MANTLE_DEFAULT_REGION: Final = "us-east-1"
 BEDROCK_REGIONS: Final = frozenset(AmazonBedrockGlobalConfig().get_all_regions())
 
 # Standard Mantle host: https://bedrock-mantle.<region>.api.aws (group 1 = region).
-MANTLE_HOST_RE: Final = re.compile(
-    r"^https?://bedrock-mantle\.([^/.]+)\.api\.aws(?=/|$)", re.IGNORECASE
-)
+MANTLE_HOST_RE: Final = re.compile(r"^https?://bedrock-mantle\.([^/.]+)\.api\.aws(?=/|$)", re.IGNORECASE)
 
 
 def resolve_mantle_bearer_token(api_key: str | None) -> str | None:
-    return (
-        api_key
-        or get_secret_str("BEDROCK_MANTLE_API_KEY")
-        or get_secret_str("AWS_BEARER_TOKEN_BEDROCK")
-    )
+    return api_key or get_secret_str("BEDROCK_MANTLE_API_KEY") or get_secret_str("AWS_BEARER_TOKEN_BEDROCK")
 
 
 def split_mantle_region_prefix(model: str) -> tuple[str | None, str]:
@@ -57,9 +51,7 @@ def resolve_mantle_region(params: Mapping[str, object]) -> str:
         BaseAWSLLM._validate_aws_region_name(region)
         return region
     api_base: Final = params.get("api_base")
-    base: Final = (api_base if isinstance(api_base, str) else None) or get_secret_str(
-        "BEDROCK_MANTLE_API_BASE"
-    )
+    base: Final = (api_base if isinstance(api_base, str) else None) or get_secret_str("BEDROCK_MANTLE_API_BASE")
     if base:
         match: Final = MANTLE_HOST_RE.match(base.rstrip("/"))
         if match:
@@ -155,11 +147,7 @@ def mantle_supports_responses(model: str | None, model_cost: dict) -> bool:
     gpt-oss substring), so a substring gate would be wrong. A model absent from
     model_cost simply has no signal and returns False (chat-completions emulation).
     """
-    entry: Final = (
-        model_cost.get(f"bedrock_mantle/{split_mantle_region_prefix(model)[1]}", {})
-        if model
-        else {}
-    )
+    entry: Final = model_cost.get(f"bedrock_mantle/{split_mantle_region_prefix(model)[1]}", {}) if model else {}
     if "/v1/responses" in (entry.get("supported_endpoints") or []):
         return True
     return entry.get("mode") == "responses"
@@ -176,9 +164,5 @@ def mantle_base_segment(model: str | None, model_cost: dict) -> str:
     the base for the model's whole OpenAI-compatible surface, so both the chat and
     responses configs derive from it -- there is no separate model-name rule.
     """
-    entry: Final = (
-        model_cost.get(f"bedrock_mantle/{split_mantle_region_prefix(model)[1]}", {})
-        if model
-        else {}
-    )
+    entry: Final = model_cost.get(f"bedrock_mantle/{split_mantle_region_prefix(model)[1]}", {}) if model else {}
     return "openai/v1" if entry.get("use_openai_responses_path") is True else "v1"
