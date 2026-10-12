@@ -121,6 +121,12 @@ class HealthCheckHelpers:
         )
         return model_params
 
+    # Keep the public spelling used by ahealth_check while retaining the
+    # underscored implementation name for existing callers.
+    update_model_params_with_health_check_tracking_information = (
+        _update_model_params_with_health_check_tracking_information
+    )
+
     @staticmethod
     def _get_metadata_for_health_check_call():
         """
