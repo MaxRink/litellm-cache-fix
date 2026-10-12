@@ -66,7 +66,7 @@ jobs:
           path: |
             ~/.cache/uv
             .venv
-          key: ${{ runner.os }}-uv-lint-${{ hashFiles('uv.lock') }}
+          key: ${{ runner.os }}-uv-lint-v2-${{ hashFiles('uv.lock') }}
 
       - name: Clean Python cache
         if: steps.changes.outputs.decision != 'skip'
