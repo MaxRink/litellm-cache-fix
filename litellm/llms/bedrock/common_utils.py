@@ -11,7 +11,7 @@ import os
 import re
 from collections.abc import Iterator, Mapping, Sequence
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, TypedDict
 
 from typing_extensions import ReadOnly
 
@@ -1698,6 +1698,10 @@ class BedrockEventStreamResponseDict(TypedDict):
     body: ReadOnly[bytes]
 
 
+class _BedrockEventStreamEvent(Protocol):
+    def to_response_dict(self) -> Mapping[str, object]: ...
+
+
 def build_bedrock_stream_error(
     response_dict: BedrockEventStreamResponseDict,
     response_stream_shape: Shape | None,
@@ -2105,7 +2109,7 @@ def bedrock_stream_event_error_status(event_type: str | None) -> int | None:
     return None if event_type is None or statuses is None else statuses.get(event_type)
 
 
-def bedrock_event_stream_response(event: Any) -> BedrockEventStreamResponseDict:
+def bedrock_event_stream_response(event: _BedrockEventStreamEvent) -> BedrockEventStreamResponseDict:
     return TypeAdapter(BedrockEventStreamResponseDict).validate_python(event.to_response_dict())
 
 
