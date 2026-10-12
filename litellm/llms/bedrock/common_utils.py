@@ -780,6 +780,12 @@ def _get_all_bedrock_regions() -> list[str]:
     return _BEDROCK_GLOBAL_REGIONS
 
 
+# Public compatibility name retained for provider integrations and tests. Keep
+# this as an identity alias so callers and monkeypatches observe the same
+# cached implementation.
+get_all_bedrock_regions = _get_all_bedrock_regions
+
+
 def get_bedrock_cross_region_inference_regions() -> list[str]:
     """Abbreviations of regions AWS Bedrock supports for cross region inference."""
     return ["global", "us", "eu", "apac", "jp", "au", "us-gov"]
