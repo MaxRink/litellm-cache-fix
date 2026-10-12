@@ -1308,6 +1308,10 @@ class Router:
         and caching to just work.
         """
         self.cache.attach_redis_cache(cache)
+
+    def update_redis_cache(self, cache: RedisCache) -> None:
+        """Compatibility wrapper for callers using the public cache helper."""
+        self._update_redis_cache(cache)
         self._claude_code_session_router_cache.attach_redis_cache(cache)
 
     # Maps a routing strategy string to the attribute on `self` that holds
@@ -1525,6 +1529,15 @@ class Router:
             for group in groups
         )
         self._replace_routing_groups(built)
+
+    @property
+    def routing_groups(self) -> dict[str, RoutingGroup]:
+        """Compatibility view of the router's named routing groups."""
+        return self._routing_groups
+
+    @routing_groups.setter
+    def routing_groups(self, value: dict[str, RoutingGroup]) -> None:
+        self._routing_groups = value
 
     def _replace_routing_groups(
         self,
@@ -10359,6 +10372,11 @@ class Router:
         owner_team_id: Final = model_info.get("team_id") if model_info is not None else None
         return owner_team_id is None or owner_team_id == team_id
 
+    @staticmethod
+    def deployment_usable_by_team(model: Mapping[str, object] | Deployment, team_id: str | None) -> bool:
+        """Compatibility wrapper for team-scoped deployment checks."""
+        return Router._deployment_usable_by_team(model, team_id)
+
     def _get_model_group_deployment_usable_by_team(
         self, model_group_name: str, team_id: str | None
     ) -> Deployment | None:
@@ -11739,6 +11757,15 @@ class Router:
 
         return returned_models
 
+    def get_all_deployments(
+        self,
+        model_name: str,
+        model_alias: str | None = None,
+        team_id: str | None = None,
+    ) -> list[DeploymentTypedDict]:
+        """Compatibility wrapper for the indexed deployment lookup."""
+        return self._get_all_deployments(model_name=model_name, model_alias=model_alias, team_id=team_id)
+
     def get_model_names(self, team_id: str | None = None) -> list[str]:
         """
         Returns all possible model names for the router, including models defined via model_group_alias.
@@ -11876,6 +11903,15 @@ class Router:
             bool: True if model has team-specific configuration
         """
         return bool(model_info and model_info.get("team_id"))
+
+    def _get_wildcard_deployments(self, model_name: str, team_id: str | None = None) -> list[DeploymentTypedDict]:
+        """Return wildcard deployments matching ``model_name`` under its public name."""
+        team_router: Final = self.team_pattern_routers.get(team_id) if team_id is not None else None
+        matches: Final = [
+            *self.pattern_router.get_deployments_by_pattern(model=model_name),
+            *(team_router.get_deployments_by_pattern(model=model_name) if team_router is not None else ()),
+        ]
+        return [{**DeploymentTypedDict(**deployment), "model_name": model_name} for deployment in matches]
 
     def get_model_list_of_routed_group(self, model_group: str) -> list[DeploymentTypedDict]:
         """
@@ -12679,6 +12715,10 @@ class Router:
         - None, if model is not in model group alias
         """
         return resolve_model_group_alias(self.model_group_alias, model)
+
+    def get_model_from_alias(self, model: str) -> str | None:
+        """Compatibility wrapper for model-group alias resolution."""
+        return self._get_model_from_alias(model)
 
     def routable_model_group(self, model_name: str) -> str:
         """Return the model group selected for a request, resolving one alias hop."""
