@@ -88,7 +88,7 @@ jobs:
       - name: Install dependencies
         if: steps.changes.outputs.decision != 'skip'
         run: |
-          uv sync --frozen --group proxy-dev --group e2e-dev
+          uv sync --frozen --group proxy-dev --group e2e-dev --reinstall-package prisma
 
       - name: Cache Prisma binaries
         if: steps.changes.outputs.decision != 'skip'
