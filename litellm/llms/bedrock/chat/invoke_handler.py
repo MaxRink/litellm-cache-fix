@@ -42,7 +42,11 @@ from litellm.types.utils import GenericStreamingChunk as GChunk
 
 from ..common_utils import (
     BedrockError,
+    bedrock_event_stream_header,
+    bedrock_event_stream_response,
+    bedrock_stream_event_error_status,
     build_bedrock_stream_error,
+    build_bedrock_stream_event_error,
     error_response_text,
     get_bedrock_response_stream_shape,
     get_bedrock_tool_name,
@@ -194,6 +198,7 @@ async def make_call(
     json_mode: bool | None = False,
     bedrock_invoke_provider: litellm.BEDROCK_INVOKE_PROVIDERS_LITERAL | None = None,
     stream_chunk_size: int | None = None,
+    timeout: float | httpx.Timeout | None = None,
 ) -> "tuple[MockResponseIterator | AsyncIterator[GChunk | ModelResponseStream | dict], httpx.Headers]":
     try:
         if client is None:
@@ -212,6 +217,7 @@ async def make_call(
             data=data,
             stream=not fake_stream,
             logging_obj=logging_obj,
+            timeout=timeout,
         )
 
         if response.status_code != 200:
@@ -284,6 +290,7 @@ def make_sync_call(
     json_mode: bool | None = False,
     bedrock_invoke_provider: litellm.BEDROCK_INVOKE_PROVIDERS_LITERAL | None = None,
     stream_chunk_size: int | None = None,
+    timeout: float | httpx.Timeout | None = None,
 ) -> "tuple[MockResponseIterator | Iterator[GChunk | ModelResponseStream | dict], httpx.Headers]":
     try:
         if client is None:
@@ -301,6 +308,7 @@ def make_sync_call(
             data=signed_json_body if signed_json_body is not None else data,
             stream=not fake_stream,
             logging_obj=logging_obj,
+            timeout=timeout,
         )
 
         if response.status_code != 200:
@@ -742,6 +750,13 @@ class AWSEventStreamDecoder:
             tool_use=None,
         )
 
+    def chunk_parser(
+        self,
+        chunk_data: dict[str, object],  # mutable-ok: mirrors override contract
+    ) -> GChunk | ModelResponseStream | dict[str, object]:  # mutable-ok: mirrors override contract
+        """Public compatibility wrapper for the provider stream parser."""
+        return self._chunk_parser(chunk_data)
+
     def iter_bytes(
         self, iterator: Iterator[bytes], *, response_headers: Mapping[str, str] | None = None
     ) -> Iterator[GChunk | ModelResponseStream | dict]:
@@ -795,11 +810,15 @@ class AWSEventStreamDecoder:
                     "Ensure botocore is correctly installed."
                 ),
             )
-        response_dict: Final = event.to_response_dict()
+        response_dict: Final = bedrock_event_stream_response(event)
         parsed_response: Final = self.parser.parse(response_dict, response_stream_shape)
 
         if response_dict["status_code"] != 200:
             raise build_bedrock_stream_error(response_dict, response_stream_shape)
+        event_type: Final = bedrock_event_stream_header(response_dict["headers"], ":event-type")
+        event_error_status: Final = bedrock_stream_event_error_status(event_type)
+        if event_type is not None and event_error_status is not None:
+            raise build_bedrock_stream_event_error(event_type, event_error_status, response_dict["body"])
         if "chunk" in parsed_response:
             chunk = parsed_response.get("chunk")
             if not chunk:

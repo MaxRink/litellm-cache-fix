@@ -2105,3 +2105,16 @@ def get_bedrock_stream_event_statuses() -> Mapping[str, int | None] | None:
 def bedrock_stream_event_error_status(event_type: str | None) -> int | None:
     statuses: Final = get_bedrock_stream_event_statuses()
     return None if event_type is None or statuses is None else statuses.get(event_type)
+
+
+def bedrock_event_stream_response(event: Any) -> BedrockEventStreamResponseDict:
+    return TypeAdapter(BedrockEventStreamResponseDict).validate_python(event.to_response_dict())
+
+
+def bedrock_event_stream_header(headers: Mapping[str, object], name: str) -> str | None:
+    value: Final = headers.get(name)
+    return value if isinstance(value, str) else None
+
+
+def build_bedrock_stream_event_error(event_type: str, status_code: int, body: bytes) -> BedrockError:
+    return BedrockError(status_code=status_code, message=f"{event_type} {body.decode(errors='replace')}")
