@@ -10573,6 +10573,47 @@ class Router:
             return display_name
         return None
 
+    def get_routable_upstream_model(self, model_name: str, team_id: str | None = None) -> "str | None":
+        """Return the provider model used by the first deployment routable for ``model_name``.
+
+        This is intentionally derived through the router's normal model-list resolver so aliases,
+        team visibility and wildcard routes follow the same precedence as an actual request.
+        """
+        deployments: Final = self.get_model_list(model_name=model_name, team_id=team_id) or ()
+        for deployment in deployments:
+            model_info = deployment.get("model_info") if isinstance(deployment, Mapping) else None
+            deployment_team = model_info.get("team_id") if isinstance(model_info, Mapping) else None
+            if team_id is None:
+                if deployment_team is not None:
+                    continue
+            elif deployment_team is not None and deployment_team != team_id:
+                continue
+            litellm_params = deployment.get("litellm_params") if isinstance(deployment, Mapping) else None
+            upstream_model = litellm_params.get("model") if isinstance(litellm_params, Mapping) else None
+            if isinstance(upstream_model, str) and upstream_model:
+                return upstream_model
+        return None
+
+    def get_configured_service_tiers(self, model_name: str, team_id: str | None = None) -> "tuple[object, ...]":
+        """Return raw service-tier declarations from deployments routable for ``model_name``.
+
+        The catalog layer needs the per-deployment values, including ``None`` for an unset
+        declaration, so it can offer only tiers shared by every deployment.
+        """
+        deployments: Final = self.get_model_list(model_name=model_name, team_id=team_id) or ()
+        tiers: list[object] = []
+        for deployment in deployments:
+            model_info = deployment.get("model_info") if isinstance(deployment, Mapping) else None
+            deployment_team = model_info.get("team_id") if isinstance(model_info, Mapping) else None
+            if team_id is None:
+                if deployment_team is not None:
+                    continue
+            elif deployment_team is not None and deployment_team != team_id:
+                continue
+            configured = model_info.get("service_tiers") if isinstance(model_info, Mapping) else None
+            tiers.append(configured)
+        return tuple(tiers)
+
     def get_credential_deployment(self, model_id: str, team_id: str | None = None) -> Deployment | None:
         """
         The deployment a passthrough endpoint (files, batches, etc.) resolves for a
