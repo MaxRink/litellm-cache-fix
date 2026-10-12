@@ -6110,6 +6110,33 @@ class BaseLLMHTTPHandler:
             provider_error.status_code_is_synthesized = True
         raise provider_error
 
+    def handle_error(
+        self,
+        e: Exception,
+        provider_config: Union[
+            BaseConfig,
+            BaseRerankConfig,
+            BaseResponsesAPIConfig,
+            BaseImageEditConfig,
+            BaseImageGenerationConfig,
+            BaseVectorStoreConfig,
+            BaseVectorStoreFilesConfig,
+            BaseGoogleGenAIGenerateContentConfig,
+            BaseAnthropicMessagesConfig,
+            BaseBatchesConfig,
+            BaseVideoConfig,
+            BaseSearchConfig,
+            BaseTextToSpeechConfig,
+            BaseSkillsAPIConfig,
+            "BasePassthroughConfig",
+            "BaseContainerConfig",
+            BaseEvalsAPIConfig,
+            BaseRealtimeHTTPConfig,
+        ],
+    ) -> None:
+        return self._handle_error(e, provider_config)
+
+
     @staticmethod
     def _append_query_params(url: str, query_params: RealtimeQueryParams | None) -> str:
         """Append query_params to url, skipping keys already present in the URL."""

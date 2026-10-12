@@ -57,6 +57,15 @@ def _ocr_health_check_document(model: str, custom_llm_provider: str) -> Document
     return native(model, custom_llm_provider)
 
 
+def default_health_check_mode(requested_model: str, model: str, custom_llm_provider: str) -> str:
+    return (
+        native_health_check_mode(model=model, custom_llm_provider=custom_llm_provider)
+        or _cost_map_mode(requested_model)
+        or _cost_map_mode(model)
+        or "chat"
+    )
+
+
 class HealthCheckHelpers:
     @staticmethod
     async def ahealth_check_wildcard_models(

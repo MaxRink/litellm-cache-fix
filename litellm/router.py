@@ -1331,6 +1331,16 @@ class Router:
             return strategy.value
         return strategy
 
+    def _switch_routing_strategy(self, routing_strategy: str | None, kwargs: Mapping[str, object]) -> None:
+        if routing_strategy == "lar1":
+            from litellm.router_strategy.lar1_routing import apply_lar1_routing_strategy
+
+            apply_lar1_routing_strategy(self, kwargs.get("routing_strategy_args"))
+            return
+        self.routing_strategy_init(
+            routing_strategy=routing_strategy, routing_strategy_args=kwargs.get("routing_strategy_args", {})
+        )
+
     @staticmethod
     def _validate_routing_strategy(routing_strategy: RoutingStrategy | str | None) -> None:
         validate_routing_strategy(routing_strategy)
@@ -10219,6 +10229,25 @@ class Router:
         except Exception:
             return None
 
+    def get_router_deployment_budget_limiter(
+        self,
+    ) -> RouterBudgetLimiting | None:
+        """
+        Return the router's deployment-budget callback.
+
+        Uses exact-type matching so proxy subclasses (e.g. virtual-key model budgets)
+        registered on litellm.callbacks are not mistaken for router deployment budgets.
+        """
+        if self.router_budget_logger is not None:
+            return self.router_budget_logger
+
+        if self.optional_callbacks:
+            for _cb in self.optional_callbacks:
+                if type(_cb) is RouterBudgetLimiting:
+                    self.router_budget_logger = _cb
+                    return _cb
+        return None
+
     def _get_router_deployment_budget_limiter(
         self,
     ) -> RouterBudgetLimiting | None:
@@ -11849,6 +11878,23 @@ class Router:
             bool: True if model has team-specific configuration
         """
         return bool(model_info and model_info.get("team_id"))
+
+    def get_model_list_of_routed_group(self, model_group: str) -> list[DeploymentTypedDict]:
+        """
+        The deployments a request the router has already resolved to model_group is
+        served from: the ones named model_group, the routing group of that name, or
+        the wildcard route matching it when neither exists.
+
+        Unlike get_model_list, model_group's own model_group_alias entry is not
+        followed. The router resolves an alias exactly once, so a group reached as
+        an alias target is served by its own deployments, never by a second hop:
+        in the chain X -> T -> U a request to X is served from T's deployments.
+        """
+        named: Final = [
+            *self._get_all_deployments(model_name=model_group),
+            *self.get_model_list_from_routing_groups(model_name=model_group),
+        ]
+        return named or self._get_wildcard_deployments(model_name=model_group)
 
     def get_model_list_from_model_alias(self, model_name: str | None = None) -> list[DeploymentTypedDict]:
         """
