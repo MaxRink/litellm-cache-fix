@@ -9,12 +9,14 @@ import functools
 import json
 import os
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, TypedDict
+
+from typing_extensions import ReadOnly
 
 if TYPE_CHECKING:
-    from botocore.model import Shape
+    from botocore.model import ServiceModel, Shape
 
     from litellm.types.llms.bedrock import BedrockCreateBatchRequest
 
@@ -778,12 +780,6 @@ def _get_all_bedrock_regions() -> list[str]:
     return _BEDROCK_GLOBAL_REGIONS
 
 
-# Public compatibility name retained for provider integrations and tests. Keep
-# this as an identity alias so callers and monkeypatches observe the same
-# cached implementation.
-get_all_bedrock_regions = _get_all_bedrock_regions
-
-
 def get_bedrock_cross_region_inference_regions() -> list[str]:
     """Abbreviations of regions AWS Bedrock supports for cross region inference."""
     return ["global", "us", "eu", "apac", "jp", "au", "us-gov"]
@@ -1129,14 +1125,34 @@ def bedrock_model_accepts_cache_points(model: str | None) -> bool:
         return True
     if _OPENAI_FAMILY_MODEL_RE.search(model):
         return False
-    entries: Final = tuple(
-        entry
-        for candidate in (model, get_bedrock_base_model(model))
-        if (entry := litellm.model_cost.get(candidate)) is not None
+    registered_keys: Final = tuple(f"bedrock/{route}{model}" for route in ("", "converse/", "converse_like/"))
+    registered_entries: Final = tuple(
+        entry for key in registered_keys if (entry := litellm.model_cost.get(key)) is not None
     )
-    if not entries:
+    # An inference-profile ARN can have a final token that happens to match a
+    # generic model-cost entry.  That entry does not describe the ARN's
+    # deployment metadata, so only consult the exact ARN in that case.
+    map_candidates: Final = (model,) if model.startswith("arn:") else (model, get_bedrock_base_model(model))
+    map_entries: Final = tuple(
+        entry for candidate in map_candidates if (entry := litellm.model_cost.get(candidate)) is not None
+    )
+    if not registered_entries and not map_entries:
         return True
-    return any(entry.get("supports_prompt_caching") is True for entry in entries)
+    explicit_marker: Final = next(
+        (
+            entry["supports_prompt_cache_breakpoint"]
+            for entry in (*registered_entries, *map_entries)
+            if isinstance(entry.get("supports_prompt_cache_breakpoint"), bool)
+        ),
+        None,
+    )
+    if explicit_marker is not None:
+        return explicit_marker
+    if model.startswith("arn:"):
+        # A deployment ARN without an explicit breakpoint marker is unknown;
+        # generic cost-map defaults must not turn that into a rejection.
+        return True
+    return any(entry.get("supports_prompt_caching") is True for entry in map_entries)
 
 
 def bedrock_supports_tool_search(model: str) -> bool:
@@ -1677,9 +1693,13 @@ def get_bedrock_response_stream_shape():
 
 
 class BedrockEventStreamResponseDict(TypedDict):
-    status_code: int
-    headers: Mapping[str, str]
-    body: bytes
+    status_code: ReadOnly[int]
+    headers: ReadOnly[Mapping[str, object]]
+    body: ReadOnly[bytes]
+
+
+class _BedrockEventStreamEvent(Protocol):
+    def to_response_dict(self) -> Mapping[str, object]: ...
 
 
 def build_bedrock_stream_error(
@@ -1713,7 +1733,12 @@ class BedrockEventStreamDecoderBase:
     """
 
     def __init__(self):
-        from botocore.parsers import EventStreamJSONParser
+        try:
+            from botocore.parsers import EventStreamJSONParser
+        except ModuleNotFoundError as exc:
+            if exc.name == "botocore":
+                raise ImportError("Missing boto3 to call bedrock. Run 'pip install boto3'.") from exc
+            raise
 
         self.parser = EventStreamJSONParser()
 
@@ -2031,3 +2056,67 @@ class CommonBatchFilesUtils:
         Get Bedrock-specific error class.
         """
         return BedrockError(status_code=status_code, message=error_message, headers=headers)
+
+
+_BEDROCK_STREAM_OUTPUT_SHAPES: Final = ("ConverseStreamOutput", "ResponseStream")
+
+
+def _modeled_error_status(member: Shape) -> int | None:
+    status: Final = (member.metadata or {}).get("error", {}).get("httpStatusCode")
+    return None if status is None else int(status)
+
+
+def _structure_members(shape: Shape | None) -> Mapping[str, Shape]:
+    from botocore.model import StructureShape
+
+    return shape.members if isinstance(shape, StructureShape) else {}
+
+
+def _bedrock_stream_output_members(service_model: ServiceModel) -> Iterator[tuple[str, Shape]]:
+    for shape_name in _BEDROCK_STREAM_OUTPUT_SHAPES:
+        yield from _structure_members(service_model.shape_for(shape_name)).items()
+
+
+def _load_bedrock_stream_event_statuses() -> Mapping[str, int | None] | None:
+    try:
+        from botocore.loaders import Loader
+        from botocore.model import ServiceModel
+
+        service_description: Final = TypeAdapter(Mapping[str, object]).validate_python(
+            Loader().load_service_model("bedrock-runtime", "service-2")
+        )
+        service_model: Final = ServiceModel(service_description)
+        return MappingProxyType(
+            {name: _modeled_error_status(member) for name, member in _bedrock_stream_output_members(service_model)}
+        )
+    except Exception as e:
+        verbose_logger.warning(
+            "litellm: could not load the bedrock-runtime stream event types, "
+            "so unrecognized Bedrock stream events will pass through undetected. Error: %s",
+            e,
+        )
+        return None
+
+
+@functools.lru_cache(maxsize=1)
+def get_bedrock_stream_event_statuses() -> Mapping[str, int | None] | None:
+    """Every modeled Bedrock stream event type mapped to its error status (None for a content event)."""
+    return _load_bedrock_stream_event_statuses()
+
+
+def bedrock_stream_event_error_status(event_type: str | None) -> int | None:
+    statuses: Final = get_bedrock_stream_event_statuses()
+    return None if event_type is None or statuses is None else statuses.get(event_type)
+
+
+def bedrock_event_stream_response(event: _BedrockEventStreamEvent) -> BedrockEventStreamResponseDict:
+    return TypeAdapter(BedrockEventStreamResponseDict).validate_python(event.to_response_dict())
+
+
+def bedrock_event_stream_header(headers: Mapping[str, object], name: str) -> str | None:
+    value: Final = headers.get(name)
+    return value if isinstance(value, str) else None
+
+
+def build_bedrock_stream_event_error(event_type: str, status_code: int, body: bytes) -> BedrockError:
+    return BedrockError(status_code=status_code, message=f"{event_type} {body.decode(errors='replace')}")
