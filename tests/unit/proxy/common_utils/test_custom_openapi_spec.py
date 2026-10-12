@@ -11,7 +11,12 @@ from unittest.mock import patch
 import pytest
 from pydantic import BaseModel, ConfigDict, Field
 
-from litellm.proxy.common_utils.custom_openapi_spec import CustomOpenAPISpec, inline_request_body
+from litellm.proxy.common_utils.custom_openapi_spec import (
+    _MAX_INLINE_DEPTH,
+    CustomOpenAPISpec,
+    _inlined,
+    inline_request_body,
+)
 
 
 class TestCustomOpenAPISpec:
@@ -203,6 +208,22 @@ def test_responses_api_paths_covers_all_three_routes():
         "/responses",
         "/openai/v1/responses",
     ]
+
+
+def test_inlined_cyclic_defs_stop_at_the_maximum_depth():
+    """Recursive OpenAPI definitions must terminate instead of exhausting the stack."""
+    defs = {"Node": {"type": "object", "next": {"$ref": "#/$defs/Node"}}}
+
+    result = _inlined({"$ref": "#/$defs/Node"}, defs)
+
+    def tree_depth(value: object) -> int:
+        if isinstance(value, dict):
+            return 1 + max((tree_depth(child) for child in value.values()), default=0)
+        if isinstance(value, list):
+            return 1 + max((tree_depth(child) for child in value), default=0)
+        return 0
+
+    assert tree_depth(result) <= _MAX_INLINE_DEPTH + 1
 
 
 def test_add_schema_to_components_renames_colliding_def_instead_of_overwriting():
