@@ -4,15 +4,12 @@ import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
-from pathlib import Path
 from typing import Final
 
 import pytest
 from pydantic import ConfigDict, create_model
 
 from litellm.types.llms.base import LiteLLMBaseModel
-
-_PROJECT_ROOT: Final = Path(__file__).resolve().parents[4]
 
 _PROBE: Final = """
 from litellm.types.llms.base import LiteLLMBaseModel
@@ -29,9 +26,8 @@ print(Probe.__pydantic_complete__, Probe(value=1).value, Probe.__pydantic_comple
 def _run_probe(probe: str, defer_pydantic_build: str | None) -> str:
     env: Final = {key: value for key, value in os.environ.items() if key != "DEFER_PYDANTIC_BUILD"}
     overrides: Final = {} if defer_pydantic_build is None else {"DEFER_PYDANTIC_BUILD": defer_pydantic_build}
-    probe_source: Final = f"import sys\nsys.path.insert(0, {str(_PROJECT_ROOT)!r})\n{probe}"
     result: Final = subprocess.run(
-        (sys.executable, "-I", "-c", probe_source),
+        (sys.executable, "-I", "-c", probe),
         env={**env, **overrides},
         capture_output=True,
         text=True,
