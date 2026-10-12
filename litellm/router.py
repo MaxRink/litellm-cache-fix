@@ -10952,9 +10952,7 @@ class Router:
         configurable_clientside_auth_params: CONFIGURABLE_CLIENTSIDE_AUTH_PARAMS = None
         reasoning_efforts_initialized = False
         reasoning_efforts_unknown = False
-        model_list: Final = self.get_model_list(model_name=model_group)
-        if model_list is None:
-            return None
+        model_list: Final = self.get_model_list_of_routed_group(model_group)
         for model in model_list:
             is_match = False
             if (
@@ -12681,6 +12679,11 @@ class Router:
         - None, if model is not in model group alias
         """
         return resolve_model_group_alias(self.model_group_alias, model)
+
+    def routable_model_group(self, model_name: str) -> str:
+        """Return the model group selected for a request, resolving one alias hop."""
+        target: Final = self._get_model_from_alias(model_name)
+        return target if target is not None else model_name
 
     def _get_deployment_by_litellm_model(self, model: str) -> list:
         """

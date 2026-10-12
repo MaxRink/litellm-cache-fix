@@ -310,3 +310,10 @@ def native_health_check_mode(model: str, custom_llm_provider: str | None) -> Lit
     from litellm.llms.bedrock_mantle.common_utils import mantle_health_check_mode
 
     return mantle_health_check_mode(model)
+
+
+def _cost_map_mode(model: str) -> str | None:
+    import litellm
+    from litellm.litellm_core_utils.health_check_utils import OPTIONAL_STR
+
+    return OPTIONAL_STR.validate_python(litellm.model_cost.get(model, {}).get("mode"))

@@ -9,12 +9,12 @@ import functools
 import json
 import os
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
 
 if TYPE_CHECKING:
-    from botocore.model import Shape
+    from botocore.model import ServiceModel, Shape
 
     from litellm.types.llms.bedrock import BedrockCreateBatchRequest
 
@@ -2025,6 +2025,46 @@ class CommonBatchFilesUtils:
         Get Bedrock-specific error class.
         """
         return BedrockError(status_code=status_code, message=error_message, headers=headers)
+
+
+_BEDROCK_STREAM_OUTPUT_SHAPES: Final = ("ConverseStreamOutput", "ResponseStream")
+
+
+def _modeled_error_status(member: Shape) -> int | None:
+    status: Final = (member.metadata or {}).get("error", {}).get("httpStatusCode")
+    return None if status is None else int(status)
+
+
+def _structure_members(shape: Shape | None) -> Mapping[str, Shape]:
+    from botocore.model import StructureShape
+
+    return shape.members if isinstance(shape, StructureShape) else {}
+
+
+def _bedrock_stream_output_members(service_model: ServiceModel) -> Iterator[tuple[str, Shape]]:
+    for shape_name in _BEDROCK_STREAM_OUTPUT_SHAPES:
+        yield from _structure_members(service_model.shape_for(shape_name)).items()
+
+
+def _load_bedrock_stream_event_statuses() -> Mapping[str, int | None] | None:
+    try:
+        from botocore.loaders import Loader
+        from botocore.model import ServiceModel
+
+        service_description: Final = TypeAdapter(Mapping[str, object]).validate_python(
+            Loader().load_service_model("bedrock-runtime", "service-2")
+        )
+        service_model: Final = ServiceModel(service_description)
+        return MappingProxyType(
+            {name: _modeled_error_status(member) for name, member in _bedrock_stream_output_members(service_model)}
+        )
+    except Exception as e:
+        verbose_logger.warning(
+            "litellm: could not load the bedrock-runtime stream event types, "
+            "so unrecognized Bedrock stream events will pass through undetected. Error: %s",
+            e,
+        )
+        return None
 
 
 def get_bedrock_stream_event_statuses() -> Mapping[str, int | None] | None:
