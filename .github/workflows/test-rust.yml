@@ -2,6 +2,8 @@ name: LiteLLM Rust
 
 on:
   push:
+    branches:
+      - main
     paths:
       - "litellm-rust/**"
       - "litellm/rust_bridge/**"
@@ -30,6 +32,7 @@ on:
       - "tests/unit/rust_bridge/native_route_wheel_test.py"
       - ".github/workflows/test-rust.yml"
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - main
       - "litellm_**"
@@ -73,6 +76,10 @@ env:
 
 jobs:
   rust-lint:
+    if: >-
+      github.event_name != 'pull_request' ||
+      !github.event.pull_request.draft ||
+      github.repository == 'BerriAI/litellm'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -96,6 +103,10 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked --features litellm-traces/schema,litellm-traces-clickhouse/schema -- -D warnings
 
   rust-test:
+    if: >-
+      github.event_name != 'pull_request' ||
+      !github.event.pull_request.draft ||
+      github.repository == 'BerriAI/litellm'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Trim debuginfo to keep the job's target dir within the runner's disk
@@ -162,6 +173,10 @@ jobs:
           done
 
   rust-wheel:
+    if: >-
+      github.event_name != 'pull_request' ||
+      !github.event.pull_request.draft ||
+      github.repository == 'BerriAI/litellm'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

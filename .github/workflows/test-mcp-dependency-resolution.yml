@@ -2,6 +2,7 @@ name: LiteLLM MCP Dependency Resolution
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - main
       - "litellm_**"
@@ -40,6 +41,10 @@ concurrency:
 
 jobs:
   resolve:
+    if: >-
+      github.event_name != 'pull_request' ||
+      !github.event.pull_request.draft ||
+      github.repository == 'BerriAI/litellm'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
@@ -121,6 +126,10 @@ jobs:
           done
 
   core-distribution:
+    if: >-
+      github.event_name != 'pull_request' ||
+      !github.event.pull_request.draft ||
+      github.repository == 'BerriAI/litellm'
     permissions:
       contents: read
       id-token: write
