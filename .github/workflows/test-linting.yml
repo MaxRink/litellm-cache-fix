@@ -494,7 +494,7 @@ jobs:
         uses: ./.github/actions/cache-cargo-build
 
       - name: Install dependencies
-        run: uv sync --frozen --all-groups --all-extras
+        run: uv sync --frozen --all-groups --all-extras --reinstall-package pytest
 
       - name: check_licenses
         run: uv run --no-sync python ./tests/code_coverage_tests/check_licenses.py
