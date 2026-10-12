@@ -109,7 +109,7 @@ describe("Guardrail Info", () => {
   });
 
   it("shows the decision model and each check's action and threshold for a decision_model guardrail", async () => {
-    vi.mocked(networking.getGuardrailInfo).mockResolvedValue({
+    const decisionModelGuardrail = {
       guardrail_id: "123",
       guardrail_name: "Jev Guard",
       litellm_params: {
@@ -130,13 +130,15 @@ describe("Guardrail Info", () => {
       created_at: "2024-01-01T00:00:00Z",
       updated_at: "2024-01-01T00:00:00Z",
       guardrail_definition_location: "database",
-    });
-    vi.mocked(networking.getGuardrailUISettings).mockResolvedValue({
+    };
+    const decisionModelUISettings = {
       supported_entities: [],
       supported_actions: [],
       pii_entity_categories: [],
       supported_modes: ["pre_call", "post_call"],
-    });
+    };
+    vi.mocked(networking.getGuardrailInfo).mockResolvedValue(decisionModelGuardrail);
+    vi.mocked(networking.getGuardrailUISettings).mockResolvedValue(decisionModelUISettings);
     vi.mocked(networking.getGuardrailProviderSpecificParams).mockResolvedValue({});
 
     render(<GuardrailInfoView guardrailId="123" onClose={() => {}} accessToken="123" isAdmin={true} />);
@@ -151,20 +153,22 @@ describe("Guardrail Info", () => {
   });
 
   it("does not show a decision model section for other guardrails", async () => {
-    vi.mocked(networking.getGuardrailInfo).mockResolvedValue({
+    const nonDecisionModelGuardrail = {
       guardrail_id: "123",
       guardrail_name: "Bedrock Guard",
       litellm_params: { guardrail: "bedrock", mode: "pre_call", default_on: false, decision_model: "jev-latest" },
       created_at: "2024-01-01T00:00:00Z",
       updated_at: "2024-01-01T00:00:00Z",
       guardrail_definition_location: "database",
-    });
-    vi.mocked(networking.getGuardrailUISettings).mockResolvedValue({
+    };
+    const nonDecisionModelUISettings = {
       supported_entities: [],
       supported_actions: [],
       pii_entity_categories: [],
       supported_modes: ["pre_call", "post_call"],
-    });
+    };
+    vi.mocked(networking.getGuardrailInfo).mockResolvedValue(nonDecisionModelGuardrail);
+    vi.mocked(networking.getGuardrailUISettings).mockResolvedValue(nonDecisionModelUISettings);
     vi.mocked(networking.getGuardrailProviderSpecificParams).mockResolvedValue({});
 
     render(<GuardrailInfoView guardrailId="123" onClose={() => {}} accessToken="123" isAdmin={true} />);
