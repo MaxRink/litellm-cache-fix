@@ -1125,14 +1125,36 @@ def bedrock_model_accepts_cache_points(model: str | None) -> bool:
         return True
     if _OPENAI_FAMILY_MODEL_RE.search(model):
         return False
-    entries: Final = tuple(
+    registered_keys: Final = tuple(f"bedrock/{route}{model}" for route in ("", "converse/", "converse_like/"))
+    registered_entries: Final = tuple(
+        entry for key in registered_keys if (entry := litellm.model_cost.get(key)) is not None
+    )
+    # An inference-profile ARN can have a final token that happens to match a
+    # generic model-cost entry.  That entry does not describe the ARN's
+    # deployment metadata, so only consult the exact ARN in that case.
+    map_candidates: Final = (model,) if model.startswith("arn:") else (model, get_bedrock_base_model(model))
+    map_entries: Final = tuple(
         entry
-        for candidate in (model, get_bedrock_base_model(model))
+        for candidate in map_candidates
         if (entry := litellm.model_cost.get(candidate)) is not None
     )
-    if not entries:
+    if not registered_entries and not map_entries:
         return True
-    return any(entry.get("supports_prompt_caching") is True for entry in entries)
+    explicit_marker: Final = next(
+        (
+            entry["supports_prompt_cache_breakpoint"]
+            for entry in (*registered_entries, *map_entries)
+            if isinstance(entry.get("supports_prompt_cache_breakpoint"), bool)
+        ),
+        None,
+    )
+    if explicit_marker is not None:
+        return explicit_marker
+    if model.startswith("arn:"):
+        # A deployment ARN without an explicit breakpoint marker is unknown;
+        # generic cost-map defaults must not turn that into a rejection.
+        return True
+    return any(entry.get("supports_prompt_caching") is True for entry in map_entries)
 
 
 def bedrock_supports_tool_search(model: str) -> bool:
@@ -1709,7 +1731,12 @@ class BedrockEventStreamDecoderBase:
     """
 
     def __init__(self):
-        from botocore.parsers import EventStreamJSONParser
+        try:
+            from botocore.parsers import EventStreamJSONParser
+        except ModuleNotFoundError as exc:
+            if exc.name == "botocore":
+                raise ImportError("Missing boto3 to call bedrock. Run 'pip install boto3'.") from exc
+            raise
 
         self.parser = EventStreamJSONParser()
 
@@ -2069,6 +2096,12 @@ def _load_bedrock_stream_event_statuses() -> Mapping[str, int | None] | None:
         return None
 
 
+@functools.lru_cache(maxsize=1)
 def get_bedrock_stream_event_statuses() -> Mapping[str, int | None] | None:
     """Every modeled Bedrock stream event type mapped to its error status (None for a content event)."""
     return _load_bedrock_stream_event_statuses()
+
+
+def bedrock_stream_event_error_status(event_type: str | None) -> int | None:
+    statuses: Final = get_bedrock_stream_event_statuses()
+    return None if event_type is None or statuses is None else statuses.get(event_type)
