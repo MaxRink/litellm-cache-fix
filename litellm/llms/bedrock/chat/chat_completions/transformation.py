@@ -54,6 +54,22 @@ REASONING_CLOSE_TAG: Final = "</reasoning>"
 _PARAMS_DICT_ADAPTER: Final = TypeAdapter(dict[str, object])
 _PARAMS_LIST_ADAPTER: Final = TypeAdapter(list[str])
 
+
+def _supports_inline_reasoning(model: str) -> bool:
+    model_id = model.removeprefix("bedrock/").removeprefix("chat_completions/")
+    for candidate in (model, model_id, f"bedrock_converse/{model_id}"):
+        entry = litellm.model_cost.get(candidate)
+        if isinstance(entry, dict):
+            return bool(entry.get("supports_bedrock_runtime_chat_completions_inline_reasoning"))
+    try:
+        return bool(
+            litellm.get_model_info(model=model_id, custom_llm_provider="bedrock_converse").get(
+                "supports_bedrock_runtime_chat_completions_inline_reasoning"
+            )
+        )
+    except Exception:
+        return False
+
 CHAT_COMPLETIONS_REFUSED_PARAMS_BY_FAMILY: Final = MappingProxyType(
     {
         "openai.gpt-oss": frozenset(("logit_bias",)),
@@ -226,6 +242,9 @@ class BedrockRuntimeChatCompletionsStreamingHandler(OpenAIChatCompletionStreamin
 
     def chunk_parser(self, chunk: dict) -> ModelResponseStream:  # mutable-ok: BaseModelResponseIterator signature
         parsed: Final = super().chunk_parser(chunk)
+        model = chunk.get("model")
+        if not isinstance(model, str) or not _supports_inline_reasoning(model):
+            return parsed
         for choice in parsed.choices:
             next_state, reasoning, content = _split_streamed_content(
                 self._splitters.get(choice.index, ReasoningTagSplitter()),
@@ -477,6 +496,8 @@ class AmazonBedrockRuntimeChatCompletionsConfig(OpenAILikeChatConfig):
         set_provider_response_headers_in_hidden_params(response, raw_response.headers)
         for choice in response.choices:
             if not isinstance(choice, Choices) or not isinstance(choice.message.content, str):
+                continue
+            if not _supports_inline_reasoning(model):
                 continue
             reasoning, content = split_reasoning_tag(choice.message.content)
             if reasoning is not None:
