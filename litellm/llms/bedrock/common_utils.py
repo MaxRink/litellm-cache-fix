@@ -1134,9 +1134,7 @@ def bedrock_model_accepts_cache_points(model: str | None) -> bool:
     # deployment metadata, so only consult the exact ARN in that case.
     map_candidates: Final = (model,) if model.startswith("arn:") else (model, get_bedrock_base_model(model))
     map_entries: Final = tuple(
-        entry
-        for candidate in map_candidates
-        if (entry := litellm.model_cost.get(candidate)) is not None
+        entry for candidate in map_candidates if (entry := litellm.model_cost.get(candidate)) is not None
     )
     if not registered_entries and not map_entries:
         return True
