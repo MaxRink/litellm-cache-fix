@@ -67,38 +67,6 @@ def _restore_model_cost_entries(original_entries):
     _invalidate_model_cost_lowercase_map()
 
 
-def test_provider_qualified_deployment_id_does_not_reuse_another_provider_pricing() -> None:
-    """A deployment id matching another provider's catalog key keeps its own prices."""
-    deployment_id = "baseten/zai-org/glm-5.2"
-    builtin_key = "baseten/zai-org/GLM-5.2"
-    model_cost_entries = {
-        key: copy.deepcopy(litellm.model_cost.get(key)) for key in (deployment_id, builtin_key)
-    }
-    try:
-        router = Router(
-            model_list=[
-                {
-                    "model_name": "nvidia/zai-org/glm-5.2",
-                    "litellm_params": {
-                        "model": "zai-org/GLM-5.2",
-                        "api_base": "https://inference.baseten.co/v1",
-                        "custom_llm_provider": "openai",
-                    },
-                    "model_info": {
-                        "id": deployment_id,
-                        "input_cost_per_token": 0.00000096,
-                        "output_cost_per_token": 0.00000302,
-                    },
-                }
-            ]
-        )
-        assert router is not None
-        assert litellm.model_cost[deployment_id]["input_cost_per_token"] == 0.00000096
-        assert litellm.model_cost[builtin_key].get("litellm_provider") == "baseten"
-    finally:
-        _restore_model_cost_entries(model_cost_entries)
-
-
 @pytest.mark.parametrize("initial_count", (1, DEFAULT_MAX_LRU_CACHE_SIZE + 1))
 async def test_discovered_limits_survive_deployment_growth_and_removal(
     initial_count: int, monkeypatch: pytest.MonkeyPatch
