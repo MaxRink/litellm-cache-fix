@@ -93,7 +93,7 @@ jobs:
       - name: Install dependencies
         if: steps.changes.outputs.decision != 'skip'
         run: |
-          uv sync --frozen --group proxy-dev --group e2e-dev
+          uv sync --frozen --group proxy-dev --group e2e-dev --reinstall-package prisma
 
       - name: Cache Prisma binaries
         if: steps.changes.outputs.decision != 'skip'
@@ -379,7 +379,7 @@ jobs:
           version: "0.10.9"
 
       - name: Install dependencies
-        run: .github/scripts/uv_sync_with_retries.sh --frozen --extra proxy --extra cli --group dev --group proxy-dev --python ${{ matrix.python-version }}
+        run: .github/scripts/uv_sync_with_retries.sh --frozen --extra proxy --extra cli --group dev --group proxy-dev --python ${{ matrix.python-version }} --reinstall-package prisma
 
       - name: Create the loopback-only network namespace
         run: |
