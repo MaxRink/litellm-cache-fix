@@ -1907,6 +1907,29 @@ app = FastAPI(
     strict_content_type=False,
 )
 
+
+def _install_optional_http_response_metrics(app: FastAPI) -> None:
+    """Install an explicitly configured response-metrics middleware before startup.
+
+    The installer is intentionally opt-in and imported only when configured so stock proxy
+    deployments have no dependency on homelab callbacks.  The value is a dotted callable path
+    (``package.module:install_http_response_metrics``); the callable receives ``app=app``.
+    """
+    installer_path = os.environ.get("LITELLM_HTTP_RESPONSE_METRICS_INSTALLER")
+    if not installer_path:
+        return
+    module_name, separator, attribute = installer_path.rpartition(":")
+    if not separator or not module_name or not attribute:
+        raise ValueError(
+            "LITELLM_HTTP_RESPONSE_METRICS_INSTALLER must be formatted as module.path:callable"
+        )
+    installer_module = importlib.import_module(module_name)
+    installer = getattr(installer_module, attribute)
+    installer(app=app)
+
+
+_install_optional_http_response_metrics(app)
+
 ## V2 OTEL: instrument the FastAPI app for server spans (gated by
 ## LITELLM_OTEL_V2). This MUST run at app-creation time — once the lifespan runs,
 ## the middleware stack is frozen and ``instrument_app`` raises "Cannot add
