@@ -2026,6 +2026,7 @@ class CommonBatchFilesUtils:
         """
         return BedrockError(status_code=status_code, message=error_message, headers=headers)
 
+
 def get_bedrock_stream_event_statuses() -> Mapping[str, int | None] | None:
     """Every modeled Bedrock stream event type mapped to its error status (None for a content event)."""
     return _load_bedrock_stream_event_statuses()

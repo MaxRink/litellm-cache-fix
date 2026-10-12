@@ -6136,7 +6136,6 @@ class BaseLLMHTTPHandler:
     ) -> None:
         return self._handle_error(e, provider_config)
 
-
     @staticmethod
     def _append_query_params(url: str, query_params: RealtimeQueryParams | None) -> str:
         """Append query_params to url, skipping keys already present in the URL."""
