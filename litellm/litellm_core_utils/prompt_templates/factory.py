@@ -5179,12 +5179,11 @@ def _bedrock_tools_pt(
         }
     ]
     """
-    from litellm.litellm_core_utils.prompt_templates.common_utils import unpack_defs
+    from litellm.litellm_core_utils.prompt_templates.common_utils import drop_lookaround_regex_patterns, unpack_defs
     from litellm.llms.bedrock.common_utils import (
         bedrock_converse_supports_strict_tools,
         normalize_json_schema_custom_types_to_object,
     )
-    from litellm.litellm_core_utils.prompt_templates.common_utils import drop_lookaround_regex_patterns
 
     _valid_json_schema_root_types = frozenset(("array", "boolean", "integer", "null", "number", "object", "string"))
     # Only Claude on Bedrock honours strict tool schemas; other families
