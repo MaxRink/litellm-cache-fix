@@ -10259,25 +10259,6 @@ class Router:
                     return _cb
         return None
 
-    def _get_router_deployment_budget_limiter(
-        self,
-    ) -> RouterBudgetLimiting | None:
-        """
-        Return the router's deployment-budget callback.
-
-        Uses exact-type matching so proxy subclasses (e.g. virtual-key model budgets)
-        registered on litellm.callbacks are not mistaken for router deployment budgets.
-        """
-        if self.router_budget_logger is not None:
-            return self.router_budget_logger
-
-        if self.optional_callbacks:
-            for _cb in self.optional_callbacks:
-                if type(_cb) is RouterBudgetLimiting:
-                    self.router_budget_logger = _cb
-                    return _cb
-        return None
-
     _get_router_deployment_budget_limiter = get_router_deployment_budget_limiter
 
     def _deployment_has_budget_limits(self, deployment: Deployment) -> bool:
