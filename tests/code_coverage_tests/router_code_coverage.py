@@ -66,6 +66,22 @@ def get_all_functions_called_in_tests(base_dir):
     return called_functions
 
 
+def add_class_method_aliases(called_functions, router_file_path):
+    """Count calls through public compatibility aliases for their implementation."""
+    with open(router_file_path, "r", encoding="utf-8") as file:
+        tree = ast.parse(file.read())
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not isinstance(node.value, ast.Name):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id in called_functions:
+                called_functions.add(node.value.id)
+    return called_functions
+
+
 def get_functions_from_router(file_path):
     """
     Extracts all functions defined in router.py.
@@ -84,6 +100,8 @@ ignored_function_names = [
     "chunks",  # Property on FallbackAwareAnthropicMessagesStream, so its reads in tests are never an ast.Call
     "messages",  # Property on FallbackAwareAnthropicMessagesStream, so its reads in tests are never an ast.Call
     "model",  # Property on FallbackAwareAnthropicMessagesStream, so its reads in tests are never an ast.Call
+    "_routing_groups",  # Property getter and setter reads are never ast.Call nodes
+    "routing_groups",  # Property getter and setter reads are never ast.Call nodes
     "_request_header",  # Tested through Claude Code session routing in test_router.py
     "_claude_code_session_router_cache_key",  # Tested through Claude Code session routing in test_router.py
     "_delete_claude_code_session_router_binding",  # Tested through Redis cleanup failure in test_router.py
@@ -115,9 +133,10 @@ def main():
         router_functions.extend(get_functions_from_router(file))
     print("router_functions: ", router_functions)
     called_functions_in_tests = get_all_functions_called_in_tests(tests_dir)
-    untested_functions = [
-        fn for fn in router_functions if fn not in called_functions_in_tests
-    ]
+    called_functions_in_tests = add_class_method_aliases(
+        called_functions_in_tests, "./litellm/router.py"
+    )
+    untested_functions = [fn for fn in router_functions if fn not in called_functions_in_tests]
 
     if untested_functions:
         all_untested_functions = []

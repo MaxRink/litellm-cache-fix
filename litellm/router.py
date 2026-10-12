@@ -10220,7 +10220,7 @@ class Router:
         except Exception:
             return None
 
-    def _get_router_deployment_budget_limiter(
+    def get_router_deployment_budget_limiter(
         self,
     ) -> RouterBudgetLimiting | None:
         """
@@ -10238,6 +10238,8 @@ class Router:
                     self.router_budget_logger = _cb
                     return _cb
         return None
+
+    _get_router_deployment_budget_limiter = get_router_deployment_budget_limiter
 
     def _deployment_has_budget_limits(self, deployment: Deployment) -> bool:
         return (
