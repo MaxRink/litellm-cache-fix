@@ -70,6 +70,7 @@ def _supports_inline_reasoning(model: str) -> bool:
     except Exception:
         return False
 
+
 CHAT_COMPLETIONS_REFUSED_PARAMS_BY_FAMILY: Final = MappingProxyType(
     {
         "openai.gpt-oss": frozenset(("logit_bias",)),

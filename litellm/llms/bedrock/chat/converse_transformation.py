@@ -1917,7 +1917,10 @@ class AmazonConverseConfig(BaseConfig):
 
         # Process tools and collect beta values
         bedrock_tools, anthropic_beta_list = self._process_tools_and_beta(
-            original_tools, model, headers, additional_request_params,
+            original_tools,
+            model,
+            headers,
+            additional_request_params,
             model_info=litellm_params.get("model_info") if isinstance(litellm_params, Mapping) else None,
         )
 
