@@ -11168,7 +11168,7 @@ class Router:
 
         return model_group_info
 
-    def get_model_group_info(self, model_group: str) -> ModelGroupInfo | None:
+    def get_model_group_info(self, model_group: str, *, include_hidden: bool = False) -> ModelGroupInfo | None:
         """
         For a given model group name, return the combined model info
 
@@ -11182,7 +11182,7 @@ class Router:
             if isinstance(item, str):
                 _router_model_group = item
             elif isinstance(item, dict):
-                if item["hidden"] is True:
+                if item["hidden"] is True and not include_hidden:
                     return None
                 else:
                     _router_model_group = item["model"]
@@ -11755,16 +11755,18 @@ class Router:
         return {name for name, fully_blocked in blocked_by_name.items() if fully_blocked}
 
     @staticmethod
-    def _are_all_deployments_blocked(
+    def are_all_deployments_blocked(
         deployments: list[DeploymentTypedDict],
     ) -> bool:
         return len(deployments) > 0 and all(
             (deployment.get("model_info") or {}).get("blocked") is True for deployment in deployments
         )
 
+    _are_all_deployments_blocked = are_all_deployments_blocked
+
     def _is_model_fully_blocked(self, model: str) -> bool:
         deployments: Final = self.get_model_list(model_name=model) or []
-        return self._are_all_deployments_blocked(deployments=deployments)
+        return self.are_all_deployments_blocked(deployments=deployments)
 
     async def async_get_fully_unhealthy_model_names(self) -> set[str]:
         """
