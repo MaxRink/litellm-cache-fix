@@ -67,8 +67,6 @@ jobs:
             ~/.cache/uv
             .venv
           key: ${{ runner.os }}-uv-lint-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-uv-lint-
 
       - name: Clean Python cache
         if: steps.changes.outputs.decision != 'skip'
@@ -380,9 +378,7 @@ jobs:
           path: |
             ~/.cache/uv
             .venv
-          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-uv-
+          key: ${{ runner.os }}-uv-proxy-types-${{ hashFiles('uv.lock') }}
 
       - name: Cache the Rust build
         if: steps.changes.outputs.relevant == 'true'
