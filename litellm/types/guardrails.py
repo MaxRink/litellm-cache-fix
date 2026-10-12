@@ -150,7 +150,6 @@ class SupportedGuardrailIntegrations(Enum):
     ALICE = "alice"
     AGENT_365 = "agent_365"
     CONDUCT = "conduct"
-    DECISION_MODEL = "decision_model"
 
 
 class Role(Enum):
