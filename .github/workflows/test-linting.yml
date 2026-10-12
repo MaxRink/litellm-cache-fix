@@ -529,6 +529,9 @@ jobs:
       - name: router_code_coverage
         run: uv run --no-sync python ./tests/code_coverage_tests/router_code_coverage.py
 
+      - name: test_router_code_coverage
+        run: uv run --frozen python -m pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_router_code_coverage.py
+
       - name: test_chat_completion_imports
         run: uv run --no-sync python ./tests/code_coverage_tests/test_chat_completion_imports.py
 

@@ -70,12 +70,6 @@ test_paths:
     paths:
       - tests/code_coverage_tests/test_aio_http_image_conversion.py
   - reason: >-
-      This router coverage script is executed directly by the code-quality coverage step rather
-      than collected as a pytest test; its output is the coverage gate, so running it again as a
-      unit test would duplicate work and report no test assertions.
-    paths:
-      - tests/code_coverage_tests/test_router_code_coverage.py
-  - reason: >-
       No job invokes this suite and its files mix pure transformation tests with ones driving live
       vendor vector stores, so assigning them needs a per-file decision
     paths:
