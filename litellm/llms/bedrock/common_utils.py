@@ -13,6 +13,8 @@ from collections.abc import Iterator, Mapping, Sequence
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
 
+from typing_extensions import ReadOnly
+
 if TYPE_CHECKING:
     from botocore.model import ServiceModel, Shape
 
@@ -1671,9 +1673,9 @@ def get_bedrock_response_stream_shape():
 
 
 class BedrockEventStreamResponseDict(TypedDict):
-    status_code: int
-    headers: Mapping[str, str]
-    body: bytes
+    status_code: ReadOnly[int]
+    headers: ReadOnly[Mapping[str, object]]
+    body: ReadOnly[bytes]
 
 
 def build_bedrock_stream_error(
