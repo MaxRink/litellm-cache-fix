@@ -1308,11 +1308,9 @@ class Router:
         and caching to just work.
         """
         self.cache.attach_redis_cache(cache)
-
-    def update_redis_cache(self, cache: RedisCache) -> None:
-        """Compatibility wrapper for callers using the public cache helper."""
-        self._update_redis_cache(cache)
         self._claude_code_session_router_cache.attach_redis_cache(cache)
+
+    update_redis_cache = _update_redis_cache
 
     # Maps a routing strategy string to the attribute on `self` that holds
     # the default group's strategy selector for that strategy. (The selectors
@@ -10280,6 +10278,8 @@ class Router:
                     return _cb
         return None
 
+    _get_router_deployment_budget_limiter = get_router_deployment_budget_limiter
+
     def _deployment_has_budget_limits(self, deployment: Deployment) -> bool:
         return (
             deployment.litellm_params.get("max_budget") is not None
@@ -10372,10 +10372,7 @@ class Router:
         owner_team_id: Final = model_info.get("team_id") if model_info is not None else None
         return owner_team_id is None or owner_team_id == team_id
 
-    @staticmethod
-    def deployment_usable_by_team(model: Mapping[str, object] | Deployment, team_id: str | None) -> bool:
-        """Compatibility wrapper for team-scoped deployment checks."""
-        return Router._deployment_usable_by_team(model, team_id)
+    deployment_usable_by_team = _deployment_usable_by_team
 
     def _get_model_group_deployment_usable_by_team(
         self, model_group_name: str, team_id: str | None
@@ -11757,14 +11754,7 @@ class Router:
 
         return returned_models
 
-    def get_all_deployments(
-        self,
-        model_name: str,
-        model_alias: str | None = None,
-        team_id: str | None = None,
-    ) -> list[DeploymentTypedDict]:
-        """Compatibility wrapper for the indexed deployment lookup."""
-        return self._get_all_deployments(model_name=model_name, model_alias=model_alias, team_id=team_id)
+    get_all_deployments = _get_all_deployments
 
     def get_model_names(self, team_id: str | None = None) -> list[str]:
         """
@@ -12716,9 +12706,7 @@ class Router:
         """
         return resolve_model_group_alias(self.model_group_alias, model)
 
-    def get_model_from_alias(self, model: str) -> str | None:
-        """Compatibility wrapper for model-group alias resolution."""
-        return self._get_model_from_alias(model)
+    get_model_from_alias = _get_model_from_alias
 
     def routable_model_group(self, model_name: str) -> str:
         """Return the model group selected for a request, resolving one alias hop."""
@@ -14848,3 +14836,9 @@ class Router:
         litellm._async_failure_callback = []
         self.retry_policy = None
         self.flush_cache()
+
+    # Public spellings retained for downstream integrations while the
+    # implementations remain private for internal call-site clarity.
+    is_deployment_blocked = _is_deployment_blocked
+    is_model_access_group_for_wildcard_route = _is_model_access_group_for_wildcard_route
+    replay_model_cost_registrations = _replay_model_cost_registrations
