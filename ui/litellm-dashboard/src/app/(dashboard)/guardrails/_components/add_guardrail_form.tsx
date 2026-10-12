@@ -747,11 +747,12 @@ const AddGuardrailForm: React.FC<AddGuardrailFormProps> = ({ visible, onClose, a
   };
 
   const renderBasicInfo = () => {
-    const usesOwnConfigurationFields =
-      isToolPermissionProvider ||
-      shouldRenderContentFilterConfigSettings(selectedProvider) ||
-      shouldRenderLLMJudgeFields(selectedProvider) ||
-      isDecisionModelProvider;
+    const usesOwnConfigurationFields = [
+      isToolPermissionProvider,
+      shouldRenderContentFilterConfigSettings(selectedProvider),
+      shouldRenderLLMJudgeFields(selectedProvider),
+      isDecisionModelProvider,
+    ].some(Boolean);
     const showProviderFields = !usesOwnConfigurationFields;
     const providerLabels: Record<string, string> = getGuardrailProviders();
     const providerKeys = Object.keys(providerLabels);
