@@ -5128,7 +5128,9 @@ def _is_bedrock_tool_block(tool: dict) -> bool:
     return isinstance(tool, dict) and ("systemTool" in tool or "toolSpec" in tool or "cachePoint" in tool)
 
 
-def _bedrock_tools_pt(tools: list, model: str | None = None) -> list[BedrockToolBlock]:
+def _bedrock_tools_pt(
+    tools: list, model: str | None = None, model_info: Mapping[str, object] | None = None
+) -> list[BedrockToolBlock]:
     """
     OpenAI tools looks like:
     tools = [
@@ -5182,6 +5184,7 @@ def _bedrock_tools_pt(tools: list, model: str | None = None) -> list[BedrockTool
         bedrock_converse_supports_strict_tools,
         normalize_json_schema_custom_types_to_object,
     )
+    from litellm.litellm_core_utils.prompt_templates.common_utils import drop_lookaround_regex_patterns
 
     _valid_json_schema_root_types = frozenset(("array", "boolean", "integer", "null", "number", "object", "string"))
     # Only Claude on Bedrock honours strict tool schemas; other families
@@ -5233,6 +5236,25 @@ def _bedrock_tools_pt(tools: list, model: str | None = None) -> list[BedrockTool
         # refs recursively and correctly detects/skips circular references.
         unpack_defs(parameters, defs_copy)
         normalize_json_schema_custom_types_to_object(parameters)
+        supports_regex_lookaround = (
+            model_info.get("supports_regex_lookaround") if isinstance(model_info, Mapping) else None
+        )
+        if supports_regex_lookaround is None and model is not None:
+            try:
+                model_candidates = (model, model.rsplit("/", 1)[-1])
+                for candidate in model_candidates:
+                    try:
+                        supports_regex_lookaround = litellm.get_model_info(
+                            model=candidate, custom_llm_provider="bedrock_converse"
+                        ).get("supports_regex_lookaround")
+                    except Exception:
+                        continue
+                    if supports_regex_lookaround is not None:
+                        break
+            except Exception:
+                supports_regex_lookaround = None
+        if supports_regex_lookaround is False:
+            parameters = dict(drop_lookaround_regex_patterns(parameters))
         if parameters.get("type") not in _valid_json_schema_root_types:
             parameters["type"] = "object"
         tool_block = cast(
