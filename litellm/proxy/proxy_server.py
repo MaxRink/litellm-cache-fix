@@ -340,6 +340,7 @@ from litellm.proxy._experimental.mcp_server.byok_credential_cache import byok_cr
 from litellm.proxy._experimental.mcp_server.catalog import public_catalog_operation
 from litellm.proxy._experimental.mcp_server.stdio_gate import MCP_STDIO_ENABLED_ENV_VAR, is_mcp_stdio_flag_key
 from litellm.proxy._lazy_features import attach_lazy_features, reserve_lazy_slot
+from litellm.proxy.http_response_metrics_startup import install_configured_http_response_metrics
 from litellm.proxy._types import *
 from litellm.proxy.analytics_endpoints.analytics_endpoints import (
     router as analytics_router,
@@ -1906,6 +1907,9 @@ app = FastAPI(
     generate_unique_id_function=_generate_stable_operation_id,
     strict_content_type=False,
 )
+
+
+install_configured_http_response_metrics(app, verbose_proxy_logger)
 
 ## V2 OTEL: instrument the FastAPI app for server spans (gated by
 ## LITELLM_OTEL_V2). This MUST run at app-creation time — once the lifespan runs,
