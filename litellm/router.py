@@ -442,6 +442,7 @@ _ALIAS_MARKER_FORWARDED_PARAMS_KWARG: Final = "_alias_marker_forwarded_params"
 _CLAUDE_CODE_SESSION_ID_RE: Final = re.compile(r"^[a-zA-Z0-9_\-]{8,}$")
 _CLAUDE_CODE_SESSION_ROUTER_TTL_SECONDS: Final = 3600
 
+
 def _resolve_model_info_api_key(api_key: str | None, dynamic_api_key: str | None) -> str | None:
     if isinstance(api_key, str) and api_key.startswith("os.environ/"):
         return get_secret_str(api_key)
