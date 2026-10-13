@@ -145,6 +145,7 @@ from litellm.types.utils import (
     COST_MAP_LOOKUP_KEY,
     echoed_cost_map_fields,
     echoed_cost_map_pricing_fields,
+    is_server_derived_pricing_key,
     without_server_derived_pricing,
 )
 from litellm.utils import get_utc_datetime
@@ -960,6 +961,26 @@ def _cost_map_entry(db_model: Deployment, incoming_model_info: Mapping[str, obje
     return MappingProxyType({})
 
 
+def _explicit_zero_pricing_overrides(model_info: Mapping[str, object]) -> Mapping[str, object]:
+    """Keep explicit zero rates while dropping display-only cost-map rates.
+
+    ``/model/info`` echoes provider catalog prices into ``model_info``. Those values must
+    remain derived, but an operator can explicitly set a deployment to free pricing by
+    supplying zero in a model update. Preserve only those zero-valued rate fields here;
+    non-zero catalog-derived values continue to be discarded.
+    """
+    return MappingProxyType(
+        {
+            key: value
+            for key, value in model_info.items()
+            if is_server_derived_pricing_key(key)
+            and isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and value == 0
+        }
+    )
+
+
 LoadedCatalog: TypeAlias = Callable[[], Mapping[str, Mapping[str, object]]]
 
 
@@ -1011,11 +1032,14 @@ def update_db_model(
         )
         merged_model_info.update(
             MappingProxyType(
-                dict(
-                    (k, v)
-                    for k, v in without_server_derived_pricing(incoming_model_info).items()
-                    if k not in echoed_fields
-                )
+                {
+                    **{
+                        k: v
+                        for k, v in without_server_derived_pricing(incoming_model_info).items()
+                        if k not in echoed_fields
+                    },
+                    **_explicit_zero_pricing_overrides(incoming_model_info),
+                }
             )
         )
         for k in echoed_fields:
