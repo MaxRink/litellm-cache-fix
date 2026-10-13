@@ -16,11 +16,10 @@ async def _exercise_refresh(monkeypatch: pytest.MonkeyPatch, api_key: str | None
         "litellm_params": {
             "model": model,
             "api_base": "http://fake-upstream.invalid/v1",
-            **({"api_key": api_key} if api_key is not None else {}),
+            "api_key": "construction-key",
         },
         "model_info": {"id": "refresh-test-id"},
     }
-    router = Router(model_list=[raw])
     seen: list[Mapping[str, str]] = []
 
     async def fake_model_info(*, headers: Mapping[str, str], **kwargs: object) -> Mapping[str, int]:
@@ -28,6 +27,8 @@ async def _exercise_refresh(monkeypatch: pytest.MonkeyPatch, api_key: str | None
         return MappingProxyType({"input": 1})
 
     monkeypatch.setattr(router_module, "get_openai_compatible_model_info", fake_model_info)
+    router = Router(model_list=[raw])
+    router.model_list[0]["litellm_params"]["api_key"] = api_key
     await router._arefresh_deployment_model_info(router.model_list[0], client=object())
     return seen
 
