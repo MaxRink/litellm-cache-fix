@@ -10392,6 +10392,12 @@ class Router:
         if api_base is None or "*" in model or params.get("use_clientside_credentials"):
             return
         api_key: Final = _resolve_model_info_api_key(params.api_key, dynamic_api_key)
+        if (
+            isinstance(params.api_key, str)
+            and params.api_key.startswith("os.environ/")
+            and api_key is None
+        ):
+            return
         headers: Final = TypeAdapter(Mapping[str, str]).validate_python(
             params.get("extra_headers") or params.get("headers") or MappingProxyType({})
         )
