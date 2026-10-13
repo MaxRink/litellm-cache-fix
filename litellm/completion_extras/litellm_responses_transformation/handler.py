@@ -196,13 +196,16 @@ class ResponsesToCompletionBridgeHandler:
         request_data["model"] = _restore_routing_prefix(model, custom_llm_provider)
         if kwargs.get("cache") is not None:
             request_data["cache"] = kwargs["cache"]
+        stream: Final = self._resolve_stream_flag(optional_params, litellm_params)
+        if not stream:
+            request_data["stream"] = True
+
         result: Final = responses(
             **request_data,
         )
 
         from litellm.types.utils import ModelResponse
 
-        stream: Final = self._resolve_stream_flag(optional_params, litellm_params)
         if isinstance(result, ResponsesAPIResponse):
             return self.transformation_handler.transform_response(
                 model=model,
@@ -293,6 +296,10 @@ class ResponsesToCompletionBridgeHandler:
         request_data["model"] = _restore_routing_prefix(model, custom_llm_provider)
         if kwargs.get("cache") is not None:
             request_data["cache"] = kwargs["cache"]
+        stream: Final = self._resolve_stream_flag(optional_params, litellm_params)
+        if not stream:
+            request_data["stream"] = True
+
         result: Final = await aresponses(
             **request_data,
             aresponses=True,
@@ -300,7 +307,6 @@ class ResponsesToCompletionBridgeHandler:
 
         from litellm.types.utils import ModelResponse
 
-        stream: Final = self._resolve_stream_flag(optional_params, litellm_params)
         if isinstance(result, ResponsesAPIResponse):
             return self.transformation_handler.transform_response(
                 model=model,

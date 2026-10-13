@@ -99,6 +99,30 @@ litellm_completion_transformation_handler: Final = LiteLLMCompletionTransformati
 #################################################
 
 
+def _collect_non_streaming_response(response: object) -> object:
+    """Consume a provider SSE iterator when the caller requested JSON."""
+    if not isinstance(response, BaseResponsesAPIStreamingIterator):
+        return response
+    for _ in response:
+        pass
+    completed = response._get_completed_response_object()
+    if completed is None:
+        raise response._stream_ended_early_error()
+    return completed
+
+
+async def _collect_non_streaming_response_async(response: object) -> object:
+    """Async counterpart of :func:`_collect_non_streaming_response`."""
+    if not isinstance(response, BaseResponsesAPIStreamingIterator):
+        return response
+    async for _ in response:
+        pass
+    completed = response._get_completed_response_object()
+    if completed is None:
+        raise response._stream_ended_early_error()
+    return completed
+
+
 def _has_file_search_tool(tools: Iterable[Mapping[str, object]] | None) -> bool:
     """Return True if any tool in the list has type 'file_search'."""
     if not tools:
@@ -781,6 +805,9 @@ async def aresponses(
         else:
             response = init_response
 
+        if stream is not True:
+            response = await _collect_non_streaming_response_async(response)
+
         # Update the responses_api_response_id with the model_id
         if isinstance(response, ResponsesAPIResponse):
             response = ResponsesAPIRequestUtils.update_responses_api_response_id_with_model_id(
@@ -1460,6 +1487,13 @@ def responses(
             custom_llm_provider=custom_llm_provider,
         )
 
+        # Some Responses providers expose SSE reliably but fail their JSON path.
+        # Collecting their terminal event below keeps the public response shape
+        # while avoiding a provider-side JSON/SSE mismatch.
+        provider_stream: Final = stream is not True
+        if provider_stream:
+            responses_api_request_params["stream"] = True
+
         # Decode any litellm-encoded encrypted-content item IDs back to their original IDs
         input = ResponsesAPIRequestUtils.restore_encrypted_content_item_ids_in_input(input)
 
@@ -1481,11 +1515,14 @@ def responses(
             _is_async=_is_async,
             client=kwargs.get("client"),
             fake_stream=responses_api_provider_config.should_fake_stream(
-                model=model, stream=stream, custom_llm_provider=custom_llm_provider
+                model=model, stream=provider_stream, custom_llm_provider=custom_llm_provider
             ),
             litellm_metadata=kwargs.get("litellm_metadata", {}),
             shared_session=kwargs.get("shared_session"),
         )
+
+        if stream is not True and _is_async is False:
+            response = _collect_non_streaming_response(response)
 
         # Update the responses_api_response_id with the model_id
         if isinstance(response, ResponsesAPIResponse):
