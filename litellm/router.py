@@ -891,6 +891,22 @@ def as_output_cap(value: object) -> int | None:
     return cap if cap >= 0 else None
 
 
+def resolve_model_info_api_key(
+    configured_api_key: str | None,
+    dynamic_api_key: str | None,
+) -> str | None:
+    """Resolve configured environment references before provider discovery.
+
+    Router construction resolves ``os.environ/NAME`` references, but the periodic
+    model-info refresh runs from persisted deployment parameters. Resolve the same
+    reference here so discovery requests never send the literal marker as a bearer
+    token. Unset references stay unset and therefore fail closed.
+    """
+    if isinstance(configured_api_key, str) and configured_api_key.startswith("os.environ/"):
+        return get_secret_str(configured_api_key)
+    return configured_api_key or dynamic_api_key
+
+
 class Router:
     @property
     def _routing_groups(self) -> dict[str, RoutingGroup]:
@@ -10729,7 +10745,10 @@ class Router:
             return
         if api_base is None or "*" in model or params.get("use_clientside_credentials"):
             return
-        api_key: Final = params.api_key or dynamic_api_key
+        api_key: Final = resolve_model_info_api_key(
+            configured_api_key=params.api_key,
+            dynamic_api_key=dynamic_api_key,
+        )
         headers: Final = TypeAdapter(Mapping[str, str]).validate_python(
             params.get("extra_headers") or params.get("headers") or MappingProxyType({})
         )
