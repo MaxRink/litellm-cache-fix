@@ -760,6 +760,16 @@ def as_output_cap(value: object) -> int | None:
     return cap if cap >= 0 else None
 
 
+def resolve_model_info_api_key(
+    configured_api_key: str | None,
+    dynamic_api_key: str | None,
+) -> str | None:
+    """Resolve environment references before periodic provider discovery."""
+    if isinstance(configured_api_key, str) and configured_api_key.startswith("os.environ/"):
+        return get_secret_str(configured_api_key)
+    return configured_api_key or dynamic_api_key
+
+
 class Router:
     model_names: set = set()
     cache_responses: bool | None = False
@@ -10381,7 +10391,10 @@ class Router:
             return
         if api_base is None or "*" in model or params.get("use_clientside_credentials"):
             return
-        api_key: Final = params.api_key or dynamic_api_key
+        api_key: Final = resolve_model_info_api_key(
+            configured_api_key=params.api_key,
+            dynamic_api_key=dynamic_api_key,
+        )
         headers: Final = TypeAdapter(Mapping[str, str]).validate_python(
             params.get("extra_headers") or params.get("headers") or MappingProxyType({})
         )
