@@ -195,6 +195,29 @@ def test_unexpected_classifier_output_runs(tmp_path: Path) -> None:
     assert "unexpected decision: maybe" in stdout
 
 
+def test_codeql_scope_runs_for_ui_only_pr(tmp_path: Path) -> None:
+    # CodeQL must still cover JavaScript changes; the client category includes UI.
+    decision, _ = _run(
+        tmp_path,
+        files=["ui/litellm-dashboard/src/components/Teams.tsx"],
+        category="client",
+    )
+    assert decision == "decision=run"
+
+
+def test_codeql_scope_skips_docs_only_pr(tmp_path: Path) -> None:
+    decision, _ = _run(tmp_path, files=["README.md", "docs/index.mdx"], category="client")
+    assert decision == "decision=skip"
+
+
+def test_codeql_scope_runs_for_dependency_and_workflow_changes(tmp_path: Path) -> None:
+    for index, changed in enumerate(("uv.lock", ".github/workflows/codeql.yml")):
+        case_dir = tmp_path / str(index)
+        case_dir.mkdir()
+        decision, _ = _run(case_dir, files=[changed], category="client")
+        assert decision == "decision=run"
+
+
 def test_ui_category_skips_a_backend_only_pr(tmp_path: Path) -> None:
     """The dashboard build and its unit tests cannot be affected by a pull request
     that touches no `ui/` file, and the `client` category cannot express that

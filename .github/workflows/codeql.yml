@@ -12,8 +12,27 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  analyze:
+  codeql-scope:
+    name: CodeQL scope
     if: github.event_name != 'schedule' || github.repository == 'BerriAI/litellm'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run_codeql: ${{ steps.changes.outputs.decision }}
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          persist-credentials: false
+      - id: changes
+        uses: ./.github/actions/detect-changes
+        with:
+          category: client
+
+  analyze:
+    needs: codeql-scope
+    if: ${{ (github.event_name != 'schedule' || github.repository == 'BerriAI/litellm') && needs.codeql-scope.outputs.run_codeql == 'run' }}
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
