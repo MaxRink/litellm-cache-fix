@@ -370,8 +370,11 @@ class Cache:
 
         preset_cache_key: Final = self._get_preset_cache_key_from_kwargs(**kwargs)
         if preset_cache_key is not None:
-            verbose_logger.debug("\nReturning preset cache key: %s", preset_cache_key)
-            return preset_cache_key
+            # Re-apply the authenticated namespace to a preset key. The helper
+            # is idempotent for same-caller reuse and isolates replay attempts.
+            namespaced_preset = self._add_namespace_to_cache_key(preset_cache_key, **kwargs)
+            verbose_logger.debug("\nReturning preset cache key: %s", namespaced_preset)
+            return namespaced_preset
 
         combined_kwargs: Final = ModelParamHelper._get_all_llm_api_params()
         is_semantic_cache: Final = self._is_semantic_cache()
@@ -503,22 +506,25 @@ class Cache:
         return hash_hex
 
     def _add_namespace_to_cache_key(self, hash_hex: str, **kwargs) -> str:
-        """
-        If a redis namespace is provided, add it to the cache key
-
-        Args:
-            hash_hex (str): The hashed cache key.
-            **kwargs: Additional keyword arguments.
-
-        Returns:
-            str: The final hashed cache key with the redis namespace.
-        """
+        """Add a server-authenticated caller namespace to proxy cache keys."""
         dynamic_cache_control: Final[DynamicCacheControl] = kwargs.get("cache", {})
-        # ``metadata`` and ``cache.namespace`` are client-controlled request
-        # fields.  A proxy request must derive its isolation scope from the
-        # server-stamped ``litellm_metadata`` instead, otherwise one caller
-        # can select another caller's cache namespace.
-        auth_metadata: Final = kwargs.get("litellm_metadata") or {}
+        # The proxy stamps these fields after auth validation. Never derive a
+        # caller namespace from the raw client API key or client namespace.
+        litellm_params: Final[dict] = kwargs.get("litellm_params") or {}
+        metadata_sources: Final[tuple[dict, ...]] = tuple(
+            source
+            for source in (
+                kwargs.get("metadata") or {},
+                kwargs.get("litellm_metadata") or {},
+                litellm_params.get("metadata") or {},
+                litellm_params.get("litellm_metadata") or {},
+            )
+            if isinstance(source, dict)
+        )
+        auth_metadata: Final = next(
+            (source for source in metadata_sources if source.get("user_api_key_hash")),
+            {},
+        )
         caller_hash: Final = auth_metadata.get("user_api_key_hash")
         if caller_hash:
             identity_parts = [str(caller_hash)]
@@ -531,7 +537,7 @@ class Cache:
         else:
             metadata: Final = kwargs.get("metadata") or {}
             namespace = dynamic_cache_control.get("namespace") or metadata.get("redis_namespace") or self.namespace
-        if namespace:
+        if namespace and not hash_hex.startswith(f"{namespace}:"):
             hash_hex = f"{namespace}:{hash_hex}"
         verbose_logger.debug("Final hashed key: %s", hash_hex)
         return hash_hex
@@ -631,7 +637,7 @@ class Cache:
             if self.should_use_cache(**kwargs) is not True:
                 return
             if "cache_key" in kwargs:
-                cache_key = kwargs["cache_key"]
+                cache_key = self._add_namespace_to_cache_key(kwargs["cache_key"], **kwargs)
             else:
                 cache_key = self.get_cache_key(**kwargs)
             if cache_key is not None and self._native_cache is not None:
@@ -672,7 +678,7 @@ class Cache:
                 return
 
             if "cache_key" in kwargs:
-                cache_key = kwargs["cache_key"]
+                cache_key = self._add_namespace_to_cache_key(kwargs["cache_key"], **kwargs)
             else:
                 cache_key = self.get_cache_key(**kwargs)
             if cache_key is not None and self._native_cache is not None:
@@ -702,7 +708,7 @@ class Cache:
         """
         try:
             if "cache_key" in kwargs:
-                cache_key = kwargs["cache_key"]
+                cache_key = self._add_namespace_to_cache_key(kwargs["cache_key"], **kwargs)
             else:
                 cache_key = self.get_cache_key(**kwargs)
             if cache_key is not None:

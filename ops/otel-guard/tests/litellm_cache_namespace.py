@@ -101,3 +101,17 @@ test_authenticated_namespace_keeps_field_boundaries_distinct()
 test_cache_key_ignores_otel_span_lifecycle_objects()
 test_optional_identity_slots_and_client_dynamic_namespace_do_not_collide()
 print("AUTH_NAMESPACE_FUNCTIONAL_TESTS_PASS")
+
+
+def test_explicit_cache_key_is_namespaced_and_idempotent():
+    cache = Cache(type="local")
+    first = {"user_api_key_hash": "hash-a", "user_api_key_team_id": "team", "user_api_key_user_id": "a"}
+    second = {"user_api_key_hash": "hash-b", "user_api_key_team_id": "team", "user_api_key_user_id": "b"}
+    first_key, _, _ = cache._add_cache_logic("fixture", cache_key="shared", metadata=first)
+    second_key, _, _ = cache._add_cache_logic("fixture", cache_key="shared", metadata=second)
+    same_caller_key, _, _ = cache._add_cache_logic("fixture", cache_key=first_key, metadata=first)
+    replay_key, _, _ = cache._add_cache_logic("fixture", cache_key=first_key, metadata=second)
+    assert first_key != second_key
+    assert first_key == same_caller_key
+    assert replay_key != first_key
+test_explicit_cache_key_is_namespaced_and_idempotent()
