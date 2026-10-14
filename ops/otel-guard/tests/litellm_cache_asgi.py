@@ -48,23 +48,27 @@ def _hash(value: object) -> str:
     return hashlib.sha256(repr(value).encode()).hexdigest()[:16]
 
 
-original_get = cache.async_get_cache
-original_add = cache.async_add_cache
+# Instrument the actual backend boundary. Cache.async_* receives the raw
+# request key before applying the authenticated namespace; the backend receives
+# the final key that must be isolated.
+backend = cache.cache
+original_get = backend.async_get_cache
+original_add = backend.async_set_cache
 
 
-async def _get(*args: object, **kwargs: Any) -> object:
-    result = await original_get(*args, **kwargs)
-    events.append({"op": "lookup", "hit": result is not None, "key_hash": _hash(kwargs.get("cache_key")), "key": kwargs.get("cache_key")})
+async def _get(key: object, **kwargs: Any) -> object:
+    result = await original_get(key, **kwargs)
+    events.append({"op": "lookup", "hit": result is not None, "key_hash": _hash(key), "key": key})
     return result
 
 
-async def _add(*args: object, **kwargs: Any) -> object:
-    events.append({"op": "store", "key_hash": _hash(kwargs.get("cache_key")), "key": kwargs.get("cache_key")})
-    return await original_add(*args, **kwargs)
+async def _add(key: object, value: object, **kwargs: Any) -> object:
+    events.append({"op": "store", "key_hash": _hash(key), "key": key})
+    return await original_add(key, value, **kwargs)
 
 
-cache.async_get_cache = _get
-cache.async_add_cache = _add
+backend.async_get_cache = _get
+backend.async_set_cache = _add
 
 
 async def _fake_provider(*args: object, **kwargs: Any) -> ModelResponse:
