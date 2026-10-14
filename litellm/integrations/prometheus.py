@@ -2708,7 +2708,12 @@ class PrometheusLogger(CustomLogger):
         """
         standard_logging_payload: Final = request_kwargs.get("standard_logging_object", {}) or {}
         _litellm_params: Final = request_kwargs.get("litellm_params", {}) or {}
-        _metadata_raw: Final[object] = self._safe_get(standard_logging_payload, "metadata") or {}
+        _metadata_raw: Final[object] = (
+            self._safe_get(standard_logging_payload, "metadata")
+            or request_kwargs.get("metadata")
+            or request_kwargs.get("litellm_metadata")
+            or {}
+        )
         if isinstance(_metadata_raw, dict):
             _metadata = _metadata_raw
         else:
@@ -2721,7 +2726,11 @@ class PrometheusLogger(CustomLogger):
                 "requester_ip_address": getattr(_metadata_raw, "requester_ip_address", None),
                 "user_agent": getattr(_metadata_raw, "user_agent", None),
             }
-        _litellm_params_metadata: Final = _litellm_params.get("metadata", {}) or {}
+        _litellm_params_metadata: dict = {}
+        for _metadata_name in ("metadata", "litellm_metadata"):
+            _metadata_value = _litellm_params.get(_metadata_name, {}) or {}
+            if isinstance(_metadata_value, dict):
+                _litellm_params_metadata.update(_metadata_value)
 
         # Extract user_api_key_auth if present (proxy injects this, skipped in merge)
         user_api_key_auth: Final = _litellm_params_metadata.get("user_api_key_auth")
@@ -3437,31 +3446,22 @@ class PrometheusLogger(CustomLogger):
         Logs a successful LLM fallback event on prometheus
 
         """
-        from litellm.litellm_core_utils.litellm_logging import (
-            StandardLoggingMetadata,
-            StandardLoggingPayloadSetup,
-        )
-
         verbose_logger.debug(
             "Prometheus: log_success_fallback_event, original_model_group: %s, kwargs: %s",
             original_model_group,
             kwargs,
         )
-        _metadata_key: Final = get_metadata_variable_name_from_kwargs(kwargs)
-        _metadata: Final = kwargs.get(_metadata_key) or {}
-        standard_metadata: Final[StandardLoggingMetadata] = StandardLoggingPayloadSetup.get_standard_logging_metadata(
-            metadata=_metadata
-        )
+        fallback_values: Final = self._extract_deployment_failure_label_values(kwargs)
         _new_model: Final = kwargs.get("model")
         _tags: Final = cast(list[str], kwargs.get("tags") or [])
 
         enum_values: Final = UserAPIKeyLabelValues(
             requested_model=_bounded_requested_model_label(original_model_group, router_originated=True),
             fallback_model=_new_model,
-            hashed_api_key=standard_metadata["user_api_key_hash"],
-            api_key_alias=standard_metadata["user_api_key_alias"],
-            team=standard_metadata["user_api_key_team_id"],
-            team_alias=standard_metadata["user_api_key_team_alias"],
+            hashed_api_key=fallback_values.get("hashed_api_key"),
+            api_key_alias=fallback_values.get("api_key_alias"),
+            team=fallback_values.get("team"),
+            team_alias=fallback_values.get("team_alias"),
             exception_status=str(getattr(original_exception, "status_code", None)),
             exception_class=self._get_exception_class_name(original_exception),
             tags=_tags,
@@ -3478,31 +3478,22 @@ class PrometheusLogger(CustomLogger):
         """
         Logs a failed LLM fallback event on prometheus
         """
-        from litellm.litellm_core_utils.litellm_logging import (
-            StandardLoggingMetadata,
-            StandardLoggingPayloadSetup,
-        )
-
         verbose_logger.debug(
             "Prometheus: log_failure_fallback_event, original_model_group: %s, kwargs: %s",
             original_model_group,
             kwargs,
         )
         _new_model: Final = kwargs.get("model")
-        _metadata_key: Final = get_metadata_variable_name_from_kwargs(kwargs)
-        _metadata: Final = kwargs.get(_metadata_key) or {}
         _tags: Final = cast(list[str], kwargs.get("tags") or [])
-        standard_metadata: Final[StandardLoggingMetadata] = StandardLoggingPayloadSetup.get_standard_logging_metadata(
-            metadata=_metadata
-        )
+        fallback_values: Final = self._extract_deployment_failure_label_values(kwargs)
 
         enum_values: Final = UserAPIKeyLabelValues(
             requested_model=_bounded_requested_model_label(original_model_group, router_originated=True),
             fallback_model=_new_model,
-            hashed_api_key=standard_metadata["user_api_key_hash"],
-            api_key_alias=standard_metadata["user_api_key_alias"],
-            team=standard_metadata["user_api_key_team_id"],
-            team_alias=standard_metadata["user_api_key_team_alias"],
+            hashed_api_key=fallback_values.get("hashed_api_key"),
+            api_key_alias=fallback_values.get("api_key_alias"),
+            team=fallback_values.get("team"),
+            team_alias=fallback_values.get("team_alias"),
             exception_status=str(getattr(original_exception, "status_code", None)),
             exception_class=self._get_exception_class_name(original_exception),
             tags=_tags,
