@@ -514,8 +514,23 @@ class Cache:
             str: The final hashed cache key with the redis namespace.
         """
         dynamic_cache_control: Final[DynamicCacheControl] = kwargs.get("cache", {})
-        metadata: Final = kwargs.get("metadata") or {}
-        namespace: Final = dynamic_cache_control.get("namespace") or metadata.get("redis_namespace") or self.namespace
+        # ``metadata`` and ``cache.namespace`` are client-controlled request
+        # fields.  A proxy request must derive its isolation scope from the
+        # server-stamped ``litellm_metadata`` instead, otherwise one caller
+        # can select another caller's cache namespace.
+        auth_metadata: Final = kwargs.get("litellm_metadata") or {}
+        caller_hash: Final = auth_metadata.get("user_api_key_hash")
+        if caller_hash:
+            identity_parts = [str(caller_hash)]
+            for field in ("user_api_key_team_id", "user_api_key_user_id"):
+                value = auth_metadata.get(field)
+                identity_parts.append("" if value is None else str(value))
+            namespace = f"caller:{':'.join(identity_parts)}"
+            if self.namespace:
+                namespace = f"{self.namespace}:{namespace}"
+        else:
+            metadata: Final = kwargs.get("metadata") or {}
+            namespace = dynamic_cache_control.get("namespace") or metadata.get("redis_namespace") or self.namespace
         if namespace:
             hash_hex = f"{namespace}:{hash_hex}"
         verbose_logger.debug("Final hashed key: %s", hash_hex)
