@@ -7,7 +7,7 @@ concurrency:
 permissions: {}
 jobs:
   publish:
-    name: Publish homelab image
+    name: Publish homelab minimal OTEL image
     permissions:
       contents: read
       packages: write # required to publish the GHCR image
