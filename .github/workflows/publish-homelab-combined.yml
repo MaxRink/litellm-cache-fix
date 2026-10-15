@@ -4,6 +4,7 @@ on:
 concurrency:
   group: homelab-publish-${{ github.workflow }}
   cancel-in-progress: false
+permissions: {}
 jobs:
   publish:
     name: Publish homelab image
