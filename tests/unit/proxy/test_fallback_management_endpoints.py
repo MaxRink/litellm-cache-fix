@@ -8,6 +8,7 @@ Tests:
 4. Validation tests (invalid models, duplicate fallbacks, etc.)
 """
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -199,6 +200,50 @@ class TestCreateFallback:
 
         assert exc_info.value.status_code == 500
         assert "Router not initialized" in str(exc_info.value.detail)
+
+    async def test_consecutive_create_preserves_groups_from_fresh_config(
+        self, mock_router, mock_prisma_client, mock_proxy_config, mock_user_api_key_dict
+    ):
+        """A second POST must merge with the latest DB value, not stale cache state."""
+        first = {"router_settings": {"fallbacks": [{"gpt-4": ["claude-3-haiku"]}]}}
+        second = {
+            "router_settings": {
+                "fallbacks": [
+                    {"gpt-4": ["claude-3-haiku"]},
+                    {"claude-3-haiku": ["gpt-3.5-turbo"]},
+                ]
+            }
+        }
+        mock_proxy_config.get_config = AsyncMock(side_effect=[first, second])
+        request_one = FallbackCreateRequest(
+            model="gpt-3.5-turbo", fallback_models=["gpt-4"]
+        )
+        request_two = FallbackCreateRequest(
+            model="claude-3-haiku", fallback_models=["gpt-4"]
+        )
+
+        with (
+            patch("litellm.proxy.proxy_server.llm_router", mock_router),
+            patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client),
+            patch("litellm.proxy.proxy_server.proxy_config", mock_proxy_config),
+            patch("litellm.proxy.proxy_server.store_model_in_db", True),
+            patch(
+                "litellm.proxy.management_endpoints.fallback_management_endpoints.invalidate_config_param",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await create_fallback(request_one, mock_user_api_key_dict)
+            await create_fallback(request_two, mock_user_api_key_dict)
+
+        saved = [
+            call.kwargs["data"]["update"]["param_value"]
+            for call in mock_prisma_client.db.litellm_config.upsert.call_args_list
+        ]
+        assert len(saved) == 2
+        assert json.loads(saved[-1])["router_settings"]["fallbacks"] == [
+            {"gpt-4": ["claude-3-haiku"]},
+            {"claude-3-haiku": ["gpt-4"]},
+        ]
 
     async def test_create_fallback_model_not_found(
         self, mock_router, mock_prisma_client, mock_proxy_config, mock_user_api_key_dict
@@ -487,6 +532,44 @@ class TestDeleteFallback:
 
             # Verify database was updated
             mock_prisma_client.db.litellm_config.upsert.assert_called_once()
+
+    async def test_delete_preserves_other_groups_from_fresh_config(
+        self,
+        mock_router_with_fallbacks,
+        mock_prisma_client,
+        mock_proxy_config,
+        mock_user_api_key_dict,
+    ):
+        mock_proxy_config.get_config = AsyncMock(
+            return_value={
+                "router_settings": {
+                    "fallbacks": [
+                        {"gpt-3.5-turbo": ["gpt-4"]},
+                        {"claude-3-haiku": ["gpt-4"]},
+                    ]
+                }
+            }
+        )
+        with (
+            patch(
+                "litellm.proxy.proxy_server.llm_router", mock_router_with_fallbacks
+            ),
+            patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client),
+            patch("litellm.proxy.proxy_server.proxy_config", mock_proxy_config),
+            patch("litellm.proxy.proxy_server.store_model_in_db", True),
+            patch(
+                "litellm.proxy.management_endpoints.fallback_management_endpoints.invalidate_config_param",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await delete_fallback("gpt-3.5-turbo", "general", mock_user_api_key_dict)
+
+        saved = mock_prisma_client.db.litellm_config.upsert.call_args.kwargs["data"][
+            "update"
+        ]["param_value"]
+        assert json.loads(saved)["router_settings"]["fallbacks"] == [
+            {"claude-3-haiku": ["gpt-4"]}
+        ]
 
     async def test_delete_fallback_not_found(
         self,
