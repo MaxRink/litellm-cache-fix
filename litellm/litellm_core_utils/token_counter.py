@@ -1093,6 +1093,12 @@ def _format_object_parameters(parameters, indent):
     required_params: Final = parameters.get("required", [])
     lines: Final = []
     for key, props in properties.items():
+        # Keep token accounting best-effort for malformed tool schemas. The
+        # provider request validator remains responsible for rejecting an
+        # invalid schema; a malformed property must not make the router's
+        # context-window precheck fail with ``str.get``.
+        if not isinstance(props, Mapping):
+            continue
         description = props.get("description")
         if description:
             lines.append(f"// {description}")
