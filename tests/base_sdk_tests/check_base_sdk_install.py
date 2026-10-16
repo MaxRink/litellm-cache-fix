@@ -180,6 +180,14 @@ CHECKS: tuple[tuple[str, Callable[[], str]], ...] = (
 )
 
 
+def checks_for_profile(profile: str) -> tuple[tuple[str, Callable[[], str]], ...]:
+    if profile == "dependencies":
+        # This profile intentionally installs optional dependencies to exercise
+        # their runtime paths; the base-only assertion belongs to the core profile.
+        return tuple((label, check) for label, check in CHECKS if label != "environment is base-only")
+    return CHECKS
+
+
 def _run(check: Callable[[], str]) -> tuple[bool, str]:
     try:
         return True, check()
@@ -196,7 +204,8 @@ def main() -> int:
         _require(present == (profile != "core"), f"{profile}: unexpected presence of {module}: {present}")
     _require(importlib.util.find_spec("jsonschema") is not None, "jsonschema must remain mandatory")
     print(f"{profile} SDK smoke check on {sys.executable}")
-    for label, check in CHECKS:
+    checks = checks_for_profile(profile)
+    for label, check in checks:
         passed, detail = _run(check)
         if not passed:
             print(f"FAIL  {label}:\n{detail}")
@@ -206,7 +215,7 @@ def main() -> int:
             return 1
         print(f"PASS  {label}: {detail}")
 
-    print(f"\nall {len(CHECKS)} checks passed")
+    print(f"\nall {len(checks)} checks passed")
     return 0
 
 
