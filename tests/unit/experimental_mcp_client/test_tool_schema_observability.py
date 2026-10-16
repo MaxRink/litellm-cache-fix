@@ -44,3 +44,20 @@ def test_boolean_json_schema_property_has_no_diagnostic(caplog):
 
     assert result == [tool]
     assert "mcp_tool_schema_invalid" not in caplog.text
+
+
+def test_invalid_schema_labels_are_single_line_and_bounded(caplog):
+    tool = SimpleNamespace(
+        name="tool\nforged=1" + ("x" * 100),
+        input_schema={"type": "object", "properties": {"field\nforged=2": "bad"}},
+    )
+
+    with caplog.at_level("WARNING"):
+        _validate_mcp_tools([tool])
+
+    record = next(record for record in caplog.records if record.name.endswith("tools"))
+    assert "\n" not in record.message
+    assert "forged=1" not in record.message
+    assert "forged=2" not in record.message
+    assert "bad" not in record.message
+    assert len(record.message) < 250

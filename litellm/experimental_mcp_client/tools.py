@@ -27,6 +27,9 @@ _MCP_SCHEMA_LABEL_MAX_LENGTH: Final = 64
 def _bounded_schema_label(value: object) -> str:
     """Return a safe, bounded label for diagnostics and metrics."""
     text = str(value) if value is not None else "unknown"
+    # Keep labels single-line and printable so a malicious tool name cannot
+    # forge additional log fields or terminal output.
+    text = "".join(char if char.isprintable() and char not in "\r\n" else "?" for char in text)
     return text[:_MCP_SCHEMA_LABEL_MAX_LENGTH] or "unknown"
 
 
