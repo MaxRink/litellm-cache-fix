@@ -12789,6 +12789,18 @@ class Router:
             counted_messages: Final = (system_message, *messages) if system_message is not None else messages
             return litellm.token_counter(messages=counted_messages, tools=tools)
         if input is not None:
+            # Embedding payloads also use ``input`` but may be strings or
+            # batches of strings/token IDs. Keep this in the synchronous worker
+            # so the async caller still offloads all tokenization.
+            if isinstance(input, str):
+                return litellm.token_counter(text=input)
+            if isinstance(input, Sequence) and input:
+                if all(isinstance(item, str) for item in input):
+                    return sum(litellm.token_counter(text=item) for item in input)
+                if all(isinstance(item, int) for item in input):
+                    return len(input)
+                if all(isinstance(item, Sequence) and all(isinstance(token, int) for token in item) for item in input):
+                    return sum(len(item) for item in input)
             from openai.types.responses.response_create_params import ResponseInputParam
 
             from litellm.responses.litellm_completion_transformation.transformation import (
