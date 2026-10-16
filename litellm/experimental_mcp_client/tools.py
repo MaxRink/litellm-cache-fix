@@ -41,15 +41,17 @@ def _record_invalid_mcp_tool_schema(tool: MCPTool) -> None:
     Schema. The diagnostic is intentionally limited to the tool name, error
     class, and schema path so prompts and schema values never enter logs.
     """
-    input_schema = getattr(tool, "input_schema", None)
+    input_schema = getattr(tool, "inputSchema", None)
+    if input_schema is None:  # compatibility with older MCP model aliases
+        input_schema = getattr(tool, "input_schema", None)
     if not isinstance(input_schema, Mapping):
         error_class = "schema_not_object"
-        path = "input_schema"
+        path = "inputSchema"
     else:
         properties = input_schema.get("properties")
         if properties is not None and not isinstance(properties, Mapping):
             error_class = "properties_not_object"
-            path = "input_schema.properties"
+            path = "inputSchema.properties"
         else:
             invalid_property = next(
                 (
@@ -66,7 +68,7 @@ def _record_invalid_mcp_tool_schema(tool: MCPTool) -> None:
             if invalid_property is None:
                 return
             error_class = "property_schema_not_object"
-            path = f"input_schema.properties.{_bounded_schema_label(invalid_property)}"
+            path = f"inputSchema.properties.{_bounded_schema_label(invalid_property)}"
 
     tool_name = _bounded_schema_label(getattr(tool, "name", None))
     verbose_logger.warning(
