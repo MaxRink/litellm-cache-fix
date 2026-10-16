@@ -31,3 +31,16 @@ def test_valid_mcp_schema_has_no_diagnostic(caplog):
 
     assert result == [tool]
     assert "mcp_tool_schema_invalid" not in caplog.text
+
+
+def test_boolean_json_schema_property_has_no_diagnostic(caplog):
+    tool = SimpleNamespace(
+        name="boolean-schema-tool",
+        input_schema={"type": "object", "properties": {"enabled": False}},
+    )
+
+    with caplog.at_level("WARNING"):
+        result = _validate_mcp_tools([tool])
+
+    assert result == [tool]
+    assert "mcp_tool_schema_invalid" not in caplog.text

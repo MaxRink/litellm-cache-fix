@@ -52,7 +52,11 @@ def _record_invalid_mcp_tool_schema(tool: MCPTool) -> None:
                 (
                     key
                     for key, value in (properties or {}).items()
-                    if not isinstance(value, Mapping)
+                    # JSON Schema permits a boolean schema (`true` accepts
+                    # anything; `false` rejects everything) as a property
+                    # schema. Only non-mapping, non-boolean values are
+                    # malformed here.
+                    if not isinstance(value, (Mapping, bool))
                 ),
                 None,
             )
