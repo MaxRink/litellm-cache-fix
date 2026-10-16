@@ -1,12 +1,12 @@
-from types import SimpleNamespace
+from mcp.types import Tool
 
 from litellm.experimental_mcp_client.tools import _validate_mcp_tools
 
 
 def test_invalid_mcp_schema_logs_bounded_metadata_without_dropping_tool(caplog):
-    tool = SimpleNamespace(
+    tool = Tool(
         name="tool-with-invalid-schema",
-        input_schema={"type": "object", "properties": {"secret": "malformed"}},
+        inputSchema={"type": "object", "properties": {"secret": "malformed"}},
     )
 
     with caplog.at_level("WARNING"):
@@ -21,9 +21,9 @@ def test_invalid_mcp_schema_logs_bounded_metadata_without_dropping_tool(caplog):
 
 
 def test_valid_mcp_schema_has_no_diagnostic(caplog):
-    tool = SimpleNamespace(
+    tool = Tool(
         name="valid-tool",
-        input_schema={"type": "object", "properties": {"value": {"type": "string"}}},
+        inputSchema={"type": "object", "properties": {"value": {"type": "string"}}},
     )
 
     with caplog.at_level("WARNING"):
@@ -34,9 +34,9 @@ def test_valid_mcp_schema_has_no_diagnostic(caplog):
 
 
 def test_boolean_json_schema_property_has_no_diagnostic(caplog):
-    tool = SimpleNamespace(
+    tool = Tool(
         name="boolean-schema-tool",
-        input_schema={"type": "object", "properties": {"enabled": False}},
+        inputSchema={"type": "object", "properties": {"enabled": False}},
     )
 
     with caplog.at_level("WARNING"):
@@ -47,9 +47,9 @@ def test_boolean_json_schema_property_has_no_diagnostic(caplog):
 
 
 def test_invalid_schema_labels_are_single_line_and_bounded(caplog):
-    tool = SimpleNamespace(
+    tool = Tool(
         name="tool\nforged=1" + ("x" * 100),
-        input_schema={"type": "object", "properties": {"field\nforged=2": "bad"}},
+        inputSchema={"type": "object", "properties": {"field\nforged=2": "bad"}},
     )
 
     with caplog.at_level("WARNING"):
