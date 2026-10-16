@@ -398,7 +398,7 @@ jobs:
 
       - name: Generate Prisma client
         if: steps.changes.outputs.relevant == 'true'
-        run: uv run --no-sync prisma generate --schema litellm/proxy/schema.prisma
+        run: uv run --locked --group ci --group proxy-dev --extra google --extra proxy --extra semantic-router prisma generate --schema litellm/proxy/schema.prisma
 
       - name: Regenerate the lazy OpenAPI snapshot
         if: steps.changes.outputs.relevant == 'true'
