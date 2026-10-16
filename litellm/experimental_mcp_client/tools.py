@@ -1,4 +1,5 @@
 import json
+from collections.abc import Mapping
 from typing import Final, Literal
 
 import anyio
@@ -19,6 +20,61 @@ from litellm.constants import (
 )
 from litellm.types.llms.anthropic import AnthropicMessagesTool
 from litellm.types.utils import ChatCompletionMessageToolCall
+
+_MCP_SCHEMA_LABEL_MAX_LENGTH: Final = 64
+
+
+def _bounded_schema_label(value: object) -> str:
+    """Return a safe, bounded label for diagnostics and metrics."""
+    text = str(value) if value is not None else "unknown"
+    return text[:_MCP_SCHEMA_LABEL_MAX_LENGTH] or "unknown"
+
+
+def _record_invalid_mcp_tool_schema(tool: MCPTool) -> None:
+    """Record malformed upstream schema metadata without logging its contents.
+
+    MCP tool discovery must remain lossless here: callers still receive the tool
+    and downstream providers retain responsibility for rejecting invalid JSON
+    Schema. The diagnostic is intentionally limited to the tool name, error
+    class, and schema path so prompts and schema values never enter logs.
+    """
+    input_schema = getattr(tool, "input_schema", None)
+    if not isinstance(input_schema, Mapping):
+        error_class = "schema_not_object"
+        path = "input_schema"
+    else:
+        properties = input_schema.get("properties")
+        if properties is not None and not isinstance(properties, Mapping):
+            error_class = "properties_not_object"
+            path = "input_schema.properties"
+        else:
+            invalid_property = next(
+                (
+                    key
+                    for key, value in (properties or {}).items()
+                    if not isinstance(value, Mapping)
+                ),
+                None,
+            )
+            if invalid_property is None:
+                return
+            error_class = "property_schema_not_object"
+            path = f"input_schema.properties.{_bounded_schema_label(invalid_property)}"
+
+    tool_name = _bounded_schema_label(getattr(tool, "name", None))
+    verbose_logger.warning(
+        "mcp_tool_schema_invalid tool=%s error_class=%s path=%s",
+        tool_name,
+        error_class,
+        _bounded_schema_label(path),
+    )
+
+
+def _validate_mcp_tools(tools: list[MCPTool]) -> list[MCPTool]:
+    """Emit bounded diagnostics for malformed tools while preserving the list."""
+    for tool in tools:
+        _record_invalid_mcp_tool_schema(tool)
+    return tools
 
 
 ########################################################
@@ -127,7 +183,8 @@ async def list_tools_with_pagination(
                 if cursor is None
                 else await session.list_tools(params=PaginatedRequestParams(cursor=cursor))
             )
-            tools.extend(result.tools)
+            page_tools = _validate_mcp_tools(list(result.tools))
+            tools.extend(page_tools)
 
             next_cursor = result.next_cursor
             if not isinstance(next_cursor, str) or not next_cursor:
