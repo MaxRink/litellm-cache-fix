@@ -32,6 +32,41 @@ import time
 _ARTIFACT_FIELD_PATTERN: Final = r'^(?!__.*__$)[^\p{Cc}\p{Cf}\p{Zl}\p{Zp}"\\./[\]]{1,200}$'
 
 
+def test_non_stream_sse_response_recovers_output_items():
+    """OpenAI-compatible gateways may emit SSE for a non-stream request."""
+    config = OpenAIResponsesAPIConfig()
+    response_payload = {
+        "id": "resp_test",
+        "object": "response",
+        "created_at": 1700000000,
+        "status": "completed",
+        "model": "gpt-6.1-sol",
+        "output": [],
+    }
+    output_item = {
+        "type": "message",
+        "role": "assistant",
+        "content": [{"type": "output_text", "text": "Hello from SSE!"}],
+    }
+    sse_body = "\n".join(
+        [
+            f"data: {json.dumps({'type': 'response.output_item.done', 'output_index': 0, 'item': output_item})}",
+            f"data: {json.dumps({'type': 'response.completed', 'response': response_payload})}",
+            "data: [DONE]",
+            "",
+        ]
+    )
+    raw_response = httpx.Response(200, headers={"content-type": "text/event-stream"}, text=sse_body)
+
+    parsed = config.transform_response_api_response(
+        model="gpt-6.1-sol",
+        raw_response=raw_response,
+        logging_obj=MagicMock(),
+    )
+
+    assert parsed.output_text == "Hello from SSE!"
+
+
 @pytest.fixture
 def restore_litellm_set_verbose(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(litellm, "set_verbose", litellm.set_verbose)

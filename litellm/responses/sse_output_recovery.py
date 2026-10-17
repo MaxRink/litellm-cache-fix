@@ -123,3 +123,53 @@ def record_output_text_chunk(
         content_item["annotations"] = parsed_chunk["annotations"]
     else:
         content_item.setdefault("annotations", [])
+
+
+def extract_completed_response_from_sse(
+    body_text: str,
+) -> tuple[dict[str, object] | None, str | None]:
+    """Recover the completed Responses object from an SSE body.
+
+    Some OpenAI-compatible gateways return SSE even when the caller did not
+    request streaming.  Keep the wire-format recovery in one place so all
+    Responses providers can turn that valid terminal event into the normal
+    JSON response shape.
+    """
+    completed_response: dict[str, object] | None = None
+    error_message: str | None = None
+    streamed_output_items: dict[int, dict[str, object]] = {}
+    text_only_output_items: dict[int, dict[str, object]] = {}
+
+    for chunk in body_text.splitlines():
+        parsed_chunk = parse_sse_json_chunk(chunk)
+        if parsed_chunk is None:
+            continue
+        event_type = parsed_chunk.get("type")
+        if event_type == "response.output_item.done":
+            record_output_item_chunk(parsed_chunk, streamed_output_items)
+            continue
+        if event_type == "response.output_text.done":
+            record_output_text_chunk(parsed_chunk, streamed_output_items, text_only_output_items)
+            continue
+        if event_type == "response.completed":
+            response_payload = parsed_chunk.get("response")
+            if not isinstance(response_payload, dict):
+                continue
+            completed_response = dict(response_payload)
+            merged_items = dict(text_only_output_items)
+            merged_items.update(streamed_output_items)
+            if not completed_response.get("output") and merged_items:
+                completed_response["output"] = [item for _, item in sorted(merged_items.items())]
+            break
+        if event_type in ("response.failed", "error"):
+            error_obj = parsed_chunk.get("error") or (
+                parsed_chunk.get("response", {}).get("error")
+                if isinstance(parsed_chunk.get("response"), dict)
+                else None
+            )
+            if error_obj is not None:
+                error_message = (
+                    error_obj.get("message") or str(error_obj) if isinstance(error_obj, dict) else str(error_obj)
+                )
+
+    return completed_response, error_message

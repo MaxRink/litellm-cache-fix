@@ -25,6 +25,7 @@ from litellm.llms.base_llm.responses.transformation import BaseResponsesAPIConfi
 from litellm.llms.openai.chat.gpt_5_transformation import is_gpt_reasoning_series_name
 from litellm.responses.litellm_completion_transformation.custom_tools import TOOL_CALL_ITEM_ID_PREFIX_BY_TYPE
 from litellm.responses.litellm_completion_transformation.reasoning_items import is_litellm_minted_reasoning_item
+from litellm.responses.sse_output_recovery import extract_completed_response_from_sse
 from litellm.secret_managers.main import get_secret_str
 from litellm.types.llms.base import LiteLLMBaseModel
 from litellm.types.llms.openai import *
@@ -572,13 +573,21 @@ class OpenAIResponsesAPIConfig(BaseResponsesAPIConfig):
         raw_response: httpx.Response,
         logging_obj: LiteLLMLoggingObj,
     ) -> ResponsesAPIResponse:
-        """No transform applied since outputs are in OpenAI spec already"""
+        """Transform JSON responses and compatible SSE terminal responses."""
         try:
             logging_obj.post_call(
                 original_response=raw_response.text,
                 additional_args={"complete_input_dict": {}},
             )
-            raw_response_json: Final = _RAW_RESPONSE_JSON.validate_python(raw_response.json())
+            body_text: Final = raw_response.text or ""
+            content_type: Final = (raw_response.headers or {}).get("content-type", "")
+            if "text/event-stream" in content_type.lower() or body_text.lstrip().startswith(("data:", "event:")):
+                sse_response, sse_error = extract_completed_response_from_sse(body_text)
+                if sse_response is None:
+                    raise OpenAIError(message=sse_error or body_text, status_code=raw_response.status_code)
+                raw_response_json: Final = _RAW_RESPONSE_JSON.validate_python(sse_response)
+            else:
+                raw_response_json = _RAW_RESPONSE_JSON.validate_python(raw_response.json())
             raw_response_json["created_at"] = safe_convert_created_field(raw_response_json["created_at"])
         except Exception:
             raise OpenAIError(message=raw_response.text, status_code=raw_response.status_code)
