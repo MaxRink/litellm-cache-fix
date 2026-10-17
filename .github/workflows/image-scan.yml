@@ -2,6 +2,7 @@ name: Image Scan
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - main
       - litellm_oss_branch
@@ -52,7 +53,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     if: >-
       github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+      (!github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository)
     timeout-minutes: 45
     permissions:
       contents: read
@@ -103,7 +105,8 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+      (!github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository)
     timeout-minutes: 30
     permissions:
       contents: read
@@ -168,7 +171,8 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+      (!github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository)
     timeout-minutes: 45
     permissions:
       contents: read
@@ -211,7 +215,8 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+      (!github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository)
     timeout-minutes: 30
     permissions:
       contents: read
@@ -242,7 +247,8 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+      (!github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository)
     timeout-minutes: 30
     permissions:
       contents: read
@@ -273,7 +279,8 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+      (!github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository)
     timeout-minutes: 30
     permissions:
       contents: read
@@ -302,7 +309,8 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+      (!github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository)
     timeout-minutes: 30
     permissions:
       contents: read

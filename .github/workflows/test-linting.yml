@@ -88,7 +88,7 @@ jobs:
       - name: Install dependencies
         if: steps.changes.outputs.decision != 'skip'
         run: |
-          uv sync --frozen --group proxy-dev --group e2e-dev
+          uv sync --frozen --group proxy-dev --group e2e-dev --reinstall-package prisma
 
       - name: Cache Prisma binaries
         if: steps.changes.outputs.decision != 'skip'
@@ -390,7 +390,7 @@ jobs:
 
       - name: Install backend dependencies
         if: steps.changes.outputs.relevant == 'true'
-        run: .github/scripts/uv_sync_with_retries.sh --frozen --group ci --group proxy-dev --extra google --extra proxy --extra semantic-router
+        run: .github/scripts/uv_sync_with_retries.sh --frozen --group ci --group proxy-dev --extra google --extra proxy --extra semantic-router --reinstall-package prisma
 
       - name: Cache Prisma binaries
         if: steps.changes.outputs.relevant == 'true'
@@ -494,7 +494,7 @@ jobs:
         uses: ./.github/actions/cache-cargo-build
 
       - name: Install dependencies
-        run: uv sync --frozen --all-groups --all-extras
+        run: uv sync --frozen --all-groups --all-extras --reinstall-package pytest
 
       - name: check_licenses
         run: uv run --no-sync python ./tests/code_coverage_tests/check_licenses.py
