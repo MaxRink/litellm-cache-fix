@@ -12789,6 +12789,13 @@ class Router:
             counted_messages: Final = (system_message, *messages) if system_message is not None else messages
             return litellm.token_counter(messages=counted_messages, tools=tools)
         if input is not None:
+            # Embeddings use ``input`` as a flat list of strings. That shape is
+            # valid for ``/v1/embeddings`` but is not a Responses input list: the
+            # Responses transformer expects mapping items and calls ``.get`` on
+            # each one. Count the text directly for the pre-call check instead.
+            if isinstance(input, list) and all(isinstance(item, str) for item in input):
+                return litellm.token_counter(text="\n".join(input))
+
             from openai.types.responses.response_create_params import ResponseInputParam
 
             from litellm.responses.litellm_completion_transformation.transformation import (
