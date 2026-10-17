@@ -983,7 +983,7 @@ jobs:
             cp rust-bridge-dist/litellm/rust_bridge/_native.abi3.so litellm/rust_bridge/_native.abi3.so
             # The bridge wheel carries distribution metadata and the native extension,
             # while isolated subprocess tests still need the Python source on sys.path.
-            .venv/bin/python -c 'import site; from pathlib import Path; Path(site.getsitepackages()[0], "litellm-source.pth").write_text("${GITHUB_WORKSPACE}\n")'
+            .venv/bin/python -c 'import os; import site; from pathlib import Path; Path(site.getsitepackages()[0], "litellm-source.pth").write_text(os.environ["GITHUB_WORKSPACE"] + "\n")'
             uv run --no-sync python -c "import importlib.metadata; import litellm.rust_bridge._native; print(importlib.metadata.version('litellm'))"
           fi
           uv run --no-sync python -c 'import os, sys; print(sys.version); assert f"{sys.version_info.major}.{sys.version_info.minor}" == os.environ["UV_PYTHON"]'
