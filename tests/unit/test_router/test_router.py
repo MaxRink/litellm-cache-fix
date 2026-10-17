@@ -6263,6 +6263,25 @@ def test_pre_call_checks_counts_tokens_from_responses_input_list(monkeypatch):
         )
 
 
+def test_pre_call_checks_counts_embedding_input_strings(monkeypatch):
+    """Embedding input lists are text values, not Responses input items."""
+    router = litellm.Router(
+        model_list=[
+            {"model_name": "m", "litellm_params": {"model": "gemini-embedding-001"}},
+        ],
+        enable_pre_call_checks=True,
+    )
+    calls = []
+
+    def count_tokens(*, text=None, **kwargs):
+        calls.append((text, kwargs))
+        return len(text or "")
+
+    monkeypatch.setattr(litellm, "token_counter", count_tokens)
+    assert router._count_pre_call_check_tokens(messages=None, input=["first", "second"]) == 12
+    assert calls == [("first\nsecond", {})]
+
+
 def test_pre_call_checks_counts_responses_instructions_tokens(monkeypatch):
     """
     Responses API `instructions` become a system message the model receives, so their
