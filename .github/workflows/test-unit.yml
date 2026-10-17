@@ -123,7 +123,7 @@ jobs:
   unit:
     name: ${{ matrix.shard }}
     needs: [rust-bridge, assert-shard-coverage]
-    if: ${{ needs.rust-bridge.outputs.decision == run && !cancelled() }}
+    if: ${{ needs.rust-bridge.outputs.decision == 'run' && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.job-timeout-minutes }}
     permissions:
@@ -983,7 +983,7 @@ jobs:
             cp rust-bridge-dist/litellm/rust_bridge/_native.abi3.so litellm/rust_bridge/_native.abi3.so
             # The bridge wheel carries distribution metadata and the native extension,
             # while isolated subprocess tests still need the Python source on sys.path.
-            .venv/bin/python -c 'import site; from pathlib import Path; Path(site.getsitepackages()[0], "litellm-source.pth").write_text("${GITHUB_WORKSPACE}\n")'
+            .venv/bin/python -c 'import os; import site; from pathlib import Path; Path(site.getsitepackages()[0], "litellm-source.pth").write_text(os.environ["GITHUB_WORKSPACE"] + "\n")'
             uv run --no-sync python -c "import importlib.metadata; import litellm.rust_bridge._native; print(importlib.metadata.version('litellm'))"
           fi
           uv run --no-sync python -c 'import os, sys; print(sys.version); assert f"{sys.version_info.major}.{sys.version_info.minor}" == os.environ["UV_PYTHON"]'
@@ -1123,6 +1123,7 @@ jobs:
         env:
           CI: "true"
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -1134,7 +1135,7 @@ jobs:
             exit 0
           fi
 
-          merge_base=$(gh api "repos/${{ github.repository }}/compare/${BASE_SHA}...${HEAD_SHA}?per_page=1" --jq '.merge_base_commit.sha')
+          merge_base=$(gh api "repos/${REPOSITORY}/compare/${BASE_SHA}...${HEAD_SHA}?per_page=1" --jq '.merge_base_commit.sha')
           test -n "$merge_base"
           git fetch --no-tags --depth=1 origin "$merge_base" "$HEAD_SHA"
           changed_files=()
