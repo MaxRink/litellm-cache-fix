@@ -236,7 +236,7 @@ def test_response_api_handler_streams_when_provider_transform_adds_stream():
         input="hi",
         responses_api_provider_config=config,
         response_api_optional_request_params={},
-        custom_llm_provider="chatgpt",
+        custom_llm_provider="openai",
         litellm_params=GenericLiteLLMParams(),
         logging_obj=logging_obj,
         client=client,
@@ -378,7 +378,7 @@ async def test_async_response_api_handler_streams_when_provider_transform_adds_s
         input="hi",
         responses_api_provider_config=config,
         response_api_optional_request_params={},
-        custom_llm_provider="chatgpt",
+        custom_llm_provider="openai",
         litellm_params=GenericLiteLLMParams(),
         logging_obj=logging_obj,
         client=client,
@@ -455,6 +455,7 @@ def test_response_api_handler_aggregates_chatgpt_sse_for_a_non_streaming_caller(
     result = handler.response_api_handler(**_chatgpt_handler_kwargs(caller_params, client))
 
     assert client.post.call_args.kwargs["json"]["stream"] is True
+    assert client.post.call_args.kwargs.get("stream", False) is False
     _assert_aggregated_chatgpt_response(result)
 
 
@@ -503,6 +504,7 @@ async def test_async_response_api_handler_aggregates_chatgpt_sse_for_a_non_strea
     result = await handler.async_response_api_handler(**_chatgpt_handler_kwargs(caller_params, client))
 
     assert client.post.call_args.kwargs["json"]["stream"] is True
+    assert client.post.call_args.kwargs.get("stream", False) is False
     _assert_aggregated_chatgpt_response(result)
 
 

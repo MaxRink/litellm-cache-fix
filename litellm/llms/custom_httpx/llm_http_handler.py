@@ -2626,7 +2626,15 @@ class BaseLLMHTTPHandler:
                     extra_body=extra_body, request=data, model=model, litellm_params=litellm_params
                 )
             )
-        stream = bool(stream or data.get("stream"))
+        # ChatGPT's subscription endpoint requires ``stream=true`` on the
+        # wire, but LiteLLM must still honor a caller's non-streaming request.
+        # Its provider transformation already aggregates the buffered SSE
+        # response. Other providers retain the historical behavior where a
+        # transformer-added stream flag selects the streaming iterator.
+        if custom_llm_provider == "chatgpt":
+            stream = caller_requested_stream
+        else:
+            stream = bool(stream or data.get("stream"))
 
         # Preserve the OpenAI-style request context (not sent to the provider) for streaming
         # hooks/metadata; the streaming iterator now consumes this to run deployment hooks
@@ -2821,7 +2829,10 @@ class BaseLLMHTTPHandler:
                     extra_body=extra_body, request=data, model=model, litellm_params=litellm_params
                 )
             )
-        stream = bool(stream or data.get("stream"))
+        if custom_llm_provider == "chatgpt":
+            stream = caller_requested_stream
+        else:
+            stream = bool(stream or data.get("stream"))
 
         # Preserve the OpenAI-style request context (not sent to the provider) for streaming
         # hooks/metadata; the streaming iterator now consumes this to run deployment hooks
