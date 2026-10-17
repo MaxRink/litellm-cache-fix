@@ -6286,6 +6286,36 @@ def test_pre_call_checks_counts_embedding_input_strings(monkeypatch):
         )
 
 
+def test_pre_call_checks_counts_embedding_batch_per_item(monkeypatch):
+    """Embedding batches count the largest item, not their concatenated text."""
+    router = litellm.Router(
+        model_list=[
+            {"model_name": "m", "litellm_params": {"model": "gemini-embedding-001"}},
+        ],
+        enable_pre_call_checks=True,
+    )
+    monkeypatch.setattr(router, "get_router_model_info", lambda **kwargs: {"max_input_tokens": 6})
+    monkeypatch.setattr(litellm, "token_counter", lambda *, text=None, **kwargs: len(text or ""))
+    deployments = [
+        {"litellm_params": {"model": "gemini-embedding-001"}, "model_info": {"id": "d1"}},
+    ]
+    assert router._pre_call_checks(
+        model="m", healthy_deployments=deployments, input=["first", "second"]
+    ) == deployments
+
+
+def test_pre_call_checks_counts_tokenized_embedding_batches():
+    """Tokenized embedding batches bypass Responses item normalization."""
+    router = litellm.Router(
+        model_list=[
+            {"model_name": "m", "litellm_params": {"model": "gemini-embedding-001"}},
+        ],
+        enable_pre_call_checks=True,
+    )
+    assert router._count_pre_call_check_tokens(messages=None, input=[1, 2, 3]) == 3
+    assert router._count_pre_call_check_tokens(messages=None, input=[[1, 2], [3, 4, 5]]) == 3
+
+
 def test_pre_call_checks_counts_responses_instructions_tokens(monkeypatch):
     """
     Responses API `instructions` become a system message the model receives, so their
