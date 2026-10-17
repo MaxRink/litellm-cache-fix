@@ -123,7 +123,7 @@ jobs:
   unit:
     name: ${{ matrix.shard }}
     needs: [rust-bridge, assert-shard-coverage]
-    if: ${{ needs.rust-bridge.outputs.decision == run && !cancelled() }}
+    if: ${{ needs.rust-bridge.outputs.decision == 'run' && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.job-timeout-minutes }}
     permissions:
