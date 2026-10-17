@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
+  publish-otel-guard:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
