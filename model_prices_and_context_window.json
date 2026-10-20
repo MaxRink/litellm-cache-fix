@@ -15982,13 +15982,36 @@
         "prompt_cache_min_tokens": 1024,
         "source": "https://platform.claude.com/docs/en/about-claude/pricing"
     },
+    "cloudflare/clef-omni": {
+        "input_cost_per_token": 1.5e-07,
+        "litellm_provider": "cloudflare",
+        "max_input_tokens": 64000,
+        "mode": "evaluation",
+        "output_cost_per_token": 0.0,
+        "source": "https://developers.cloudflare.com/workers-ai/models/clef-omni/",
+        "supports_audio_input": true,
+        "supports_video_input": true,
+        "supports_vision": true
+    },
+    "cloudflare/@cf/cloudflare/clef-omni": {
+        "input_cost_per_token": 1.5e-07,
+        "litellm_provider": "cloudflare",
+        "max_input_tokens": 64000,
+        "mode": "evaluation",
+        "output_cost_per_token": 0.0,
+        "source": "https://developers.cloudflare.com/workers-ai/models/clef-omni/",
+        "supports_audio_input": true,
+        "supports_video_input": true,
+        "supports_vision": true
+    },
     "cloudflare/clef": {
         "input_cost_per_token": 2.4e-07,
         "litellm_provider": "cloudflare",
         "max_input_tokens": 65536,
         "mode": "evaluation",
         "output_cost_per_token": 0.0,
-        "source": "https://developers.cloudflare.com/workers-ai/platform/pricing/"
+        "source": "https://developers.cloudflare.com/workers-ai/platform/pricing/",
+        "supports_vision": true
     },
     "cloudflare/clef-flash": {
         "input_cost_per_token": 9e-08,
@@ -15996,7 +16019,8 @@
         "max_input_tokens": 65536,
         "mode": "evaluation",
         "output_cost_per_token": 0.0,
-        "source": "https://developers.cloudflare.com/workers-ai/platform/pricing/"
+        "source": "https://developers.cloudflare.com/workers-ai/platform/pricing/",
+        "supports_vision": true
     },
     "cloudflare/@cf/cloudflare/clef": {
         "input_cost_per_token": 2.4e-07,
@@ -16004,7 +16028,8 @@
         "max_input_tokens": 65536,
         "mode": "evaluation",
         "output_cost_per_token": 0.0,
-        "source": "https://developers.cloudflare.com/workers-ai/platform/pricing/"
+        "source": "https://developers.cloudflare.com/workers-ai/platform/pricing/",
+        "supports_vision": true
     },
     "cloudflare/@cf/cloudflare/clef-flash": {
         "input_cost_per_token": 9e-08,
@@ -16012,7 +16037,8 @@
         "max_input_tokens": 65536,
         "mode": "evaluation",
         "output_cost_per_token": 0.0,
-        "source": "https://developers.cloudflare.com/workers-ai/platform/pricing/"
+        "source": "https://developers.cloudflare.com/workers-ai/platform/pricing/",
+        "supports_vision": true
     },
     "cloudflare/@cf/meta/llama-2-7b-chat-fp16": {
         "input_cost_per_token": 1.923e-06,
@@ -20051,7 +20077,13 @@
         "supports_prompt_caching": true,
         "supports_reasoning": true,
         "supports_tool_choice": true,
-        "supports_vision": false
+        "supports_vision": false,
+        "token_count_framing": 97
+    },
+    "databricks/system.ai.deepseek-v4-flash-0731": {
+        "litellm_provider": "databricks",
+        "mode": "chat",
+        "token_count_framing": 97
     },
     "databricks/databricks-deepseek-v4-pro-0813": {
         "cache_creation_input_token_cost": 1.31999e-06,
@@ -21042,7 +21074,13 @@
         "supports_prompt_caching": true,
         "supports_reasoning": true,
         "supports_tool_choice": true,
-        "supports_vision": true
+        "supports_vision": true,
+        "token_count_framing": 100
+    },
+    "databricks/system.ai.kimi-k3": {
+        "litellm_provider": "databricks",
+        "mode": "chat",
+        "token_count_framing": 100
     },
     "databricks/databricks-llama-4-maverick": {
         "cache_creation_input_token_cost": 5.0001e-07,
@@ -21164,6 +21202,18 @@
         "output_dbu_cost_per_token": 0.0,
         "output_vector_size": 1024,
         "source": "https://www.databricks.com/product/pricing/foundation-model-serving"
+    },
+    "databricks/databricks-openjev-qwen35-4b": {
+        "cache_creation_input_token_cost": 0.0,
+        "cache_read_input_token_cost": 0.0,
+        "input_cost_per_token": 0.0,
+        "litellm_provider": "databricks",
+        "metadata": {
+            "notes": "Pay-per-token Foundation Model API decision endpoint (OpenJev, Qwen 3.5 4B) queried through the System One API. Databricks published no DBU rate for it as of 2026-10-07, so a deployment's model_info prices set the billed cost."
+        },
+        "mode": "evaluation",
+        "output_cost_per_token": 0.0,
+        "source": "https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/supported-models"
     },
     "dataforseo/search": {
         "input_cost_per_query": 0.003,
@@ -73685,13 +73735,24 @@
     "typesafe/jev-1.13.0": {
         "input_cost_per_token": 4.2e-08,
         "litellm_provider": "typesafe",
+        "max_input_tokens": 65536,
         "mode": "evaluation",
         "output_cost_per_token": 0.0,
         "source": "https://docs.typesafe.ai/models"
     },
+    "typesafe/jev-1.14.0": {
+        "input_cost_per_token": 4.2e-08,
+        "litellm_provider": "typesafe",
+        "max_input_tokens": 65536,
+        "mode": "evaluation",
+        "output_cost_per_token": 0.0,
+        "source": "https://docs.typesafe.ai/models",
+        "supports_box_questions": true
+    },
     "typesafe/jev-latest": {
         "input_cost_per_token": 4.2e-08,
         "litellm_provider": "typesafe",
+        "max_input_tokens": 65536,
         "mode": "evaluation",
         "output_cost_per_token": 0.0,
         "source": "https://docs.typesafe.ai/models"
@@ -73699,9 +73760,11 @@
     "typesafe/jev-preview": {
         "input_cost_per_token": 4.2e-08,
         "litellm_provider": "typesafe",
+        "max_input_tokens": 65536,
         "mode": "evaluation",
         "output_cost_per_token": 0.0,
-        "source": "https://docs.typesafe.ai/models"
+        "source": "https://docs.typesafe.ai/models",
+        "supports_box_questions": true
     },
     "wandb/deepseek-ai/DeepSeek-V4.1-Flash": {
         "cache_read_input_token_cost": 3e-08,
@@ -77818,7 +77881,9 @@
         "supports_response_schema": true,
         "supports_system_messages": true,
         "supports_tool_choice": true,
-        "supports_vision": true
+        "supports_vision": true,
+        "token_count_framing": 64,
+        "token_count_tokenizer": "kimi_k3"
     },
     "global.moonshotai.kimi-k3": {
         "supports_regex_lookaround": false,
@@ -77848,7 +77913,9 @@
         "supports_response_schema": true,
         "supports_system_messages": true,
         "supports_tool_choice": true,
-        "supports_vision": true
+        "supports_vision": true,
+        "token_count_framing": 64,
+        "token_count_tokenizer": "kimi_k3"
     },
     "us.moonshotai.kimi-k3": {
         "supports_regex_lookaround": false,
@@ -77878,7 +77945,9 @@
         "supports_response_schema": true,
         "supports_system_messages": true,
         "supports_tool_choice": true,
-        "supports_vision": true
+        "supports_vision": true,
+        "token_count_framing": 64,
+        "token_count_tokenizer": "kimi_k3"
     },
     "openrouter/xiaomi/mimo-v2.6-flash": {
         "cache_read_input_token_cost": 2.8e-09,
@@ -81926,7 +81995,6 @@
         "source": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockFoundationModels/current/index.json",
         "supports_video_input": true
     },
-
     "edenai/openai/gpt-4.1-nano": {
         "cache_read_input_token_cost": 2.5e-08,
         "cache_read_input_token_cost_priority": 5e-08,
@@ -81964,6 +82032,13 @@
         "supports_system_messages": true,
         "supports_tool_choice": true,
         "supports_vision": true
+    },
+    "azure_ai/Microsoft-Decision-1": {
+        "input_cost_per_token": 4.2e-08,
+        "litellm_provider": "azure_ai",
+        "mode": "evaluation",
+        "output_cost_per_token": 0.0,
+        "source": "https://prices.azure.com/api/retail/prices?$filter=productName eq 'Microsoft Decision Models'"
     }
 
 }

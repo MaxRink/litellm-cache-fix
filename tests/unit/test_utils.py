@@ -350,6 +350,26 @@ def test_supports_audio_output_reads_its_own_cost_map_flag(
     assert litellm.supports_audio_output(model) is audio_output
 
 
+@pytest.mark.parametrize(("audio_input", "video_input"), [(True, False), (False, True)])
+def test_supports_video_input_reads_its_own_cost_map_flag(
+    local_model_cost_map: None, monkeypatch: pytest.MonkeyPatch, audio_input: bool, video_input: bool
+) -> None:
+    model: Final = "openai/video-flags-disagree-model"
+    monkeypatch.setitem(
+        litellm.model_cost,
+        model,
+        {
+            "litellm_provider": "openai",
+            "mode": "chat",
+            "supports_audio_input": audio_input,
+            "supports_video_input": video_input,
+        },
+    )
+    assert litellm.supports_video_input(model) is video_input
+    assert litellm.supports_audio_input(model) is audio_input
+    assert litellm.get_model_info(model)["supports_video_input"] is video_input
+
+
 def test_get_optional_params_image_gen():
     from litellm.llms.azure.image_generation import AzureGPTImageGenerationConfig
 
@@ -1017,11 +1037,19 @@ def test_aaamodel_prices_and_context_window_json_is_valid():
                 "supports_tool_choice": {"type": "boolean"},
                 "supports_tool_search": {"type": "boolean"},
                 "supports_video_input": {"type": "boolean"},
+                "supports_box_questions": {"type": "boolean"},
                 "supports_vision": {"type": "boolean"},
                 "supports_web_search": {"type": "boolean"},
                 "supports_bedrock_runtime_chat_completions_tools_with_reasoning": {"type": "boolean"},
                 "supports_bedrock_runtime_chat_completions_response_format": {"type": "boolean"},
                 "supports_bedrock_runtime_chat_completions_inline_reasoning": {"type": "boolean"},
+                "token_count_framing": {"type": "integer"},
+                "token_count_model": {
+                    "type": "object",
+                    "properties": {"model": {"type": "string"}, "region": {"type": "string"}},
+                    "required": ["model"],
+                },
+                "token_count_tokenizer": {"type": "string", "enum": ["kimi_k3"]},
                 "supports_url_context": {"type": "boolean"},
                 "supports_multimodal": {"type": "boolean"},
                 "uses_embed_content": {"type": "boolean"},
@@ -8153,7 +8181,7 @@ def test_models_by_provider():
             or v["litellm_provider"] == "bedrock_converse"
         ):
             continue
-        elif v.get("mode") in ("search", "evaluation"):
+        elif v.get("mode") in ("search", "decisions", "evaluation"):
             continue
         else:
             providers.add(v["litellm_provider"])

@@ -141,6 +141,7 @@ jobs:
               tests/unit/batch_completion
               tests/unit/decisions
               tests/unit/litellm_core_utils
+              tests/unit/systemone
             python-version: "3.12"
             workers: 4
             reruns: 0
@@ -345,6 +346,7 @@ jobs:
               tests/unit/llms/snowflake
               tests/unit/llms/soniox
               tests/unit/llms/stability
+              tests/unit/llms/strands_decider
               tests/unit/llms/tavily
               tests/unit/llms/tencent
               tests/unit/llms/tinyfish
@@ -670,6 +672,7 @@ jobs:
           - shard: proxy-extras
             test-path: >-
               tests/unit/litellm_proxy_extras
+              tests/unit/db_scripts
             python-version: "3.12"
             workers: 2
             reruns: 0

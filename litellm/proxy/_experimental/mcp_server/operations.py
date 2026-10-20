@@ -10,6 +10,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from datetime import datetime
 from functools import partial
+from types import EllipsisType
 from typing import Any, Final, NoReturn, TypeAlias, overload
 
 from fastapi import HTTPException
@@ -45,7 +46,7 @@ from mcp.types import (
     ToolsCapability,
 )
 from mcp.types import Tool as MCPTool
-from pydantic import AnyUrl, ConfigDict, Field, TypeAdapter
+from pydantic import AnyUrl, ConfigDict, Field, SecretStr, TypeAdapter
 from typing_extensions import ReadOnly, TypedDict, assert_never
 
 from litellm._logging import verbose_logger
@@ -352,6 +353,7 @@ async def _dispatch_virtual_mcp_tool(
     oauth2_headers: dict[str, str] | None = None,
     raw_headers: dict[str, str] | None = None,
     mcp_proxy_mode: bool = False,
+    incoming_bearer_token: SecretStr | None | EllipsisType = ...,
 ) -> CallToolResult | None:
     """Handle the mcp_tool_search / mcp_tool_call virtual tools.
 
@@ -407,6 +409,7 @@ async def _dispatch_virtual_mcp_tool(
                 oauth2_headers=oauth2_headers,
                 raw_headers=raw_headers,
                 litellm_logging_obj=proxy_logging_obj,
+                incoming_bearer_token=incoming_bearer_token,
             )
         except Exception as exc:
             if proxy_logging_obj is not None:
@@ -509,6 +512,7 @@ async def _dispatch_virtual_mcp_tool(
         oauth2_headers=oauth2_headers,
         raw_headers=raw_headers,
         litellm_logging_obj=virtual_logging_obj,
+        incoming_bearer_token=incoming_bearer_token,
     )
 
 
@@ -1874,6 +1878,7 @@ async def execute_mcp_tool(
     wire_compat: WireCompat = WireCompat.LEGACY,
     input_responses: InputResponses | None = None,
     request_state: str | None = None,
+    incoming_bearer_token: SecretStr | None | EllipsisType = ...,
     **kwargs: object,  # kwargs-ok: preserves the existing REST and decorated logging call contract
 ) -> CallToolResult | InputRequiredResult:
     context: Final = prepare_context(
@@ -1884,6 +1889,7 @@ async def execute_mcp_tool(
         raw_headers=raw_headers,
         client_ip=client_ip,
         wire_compat=wire_compat,
+        incoming_bearer_token=incoming_bearer_token,
     )
     operation: Final = AuthorizedToolCall(
         name=name,
@@ -1915,6 +1921,7 @@ async def _execute_mcp_tool(
     wire_compat: WireCompat = WireCompat.LEGACY,
     input_responses: InputResponses | None = None,
     request_state: str | None = None,
+    incoming_bearer_token: SecretStr | None | EllipsisType = ...,
     **kwargs: Any,
 ) -> CallToolResult | InputRequiredResult:
     """
@@ -2152,6 +2159,7 @@ async def _execute_mcp_tool(
                     oauth2_headers,
                 ),
             ),
+            incoming_bearer_token=incoming_bearer_token,
         )
         # `pre_call_tool_check` may return guardrail-modified
         # arguments; honor them on the local path too.
@@ -2212,6 +2220,7 @@ async def _execute_mcp_tool(
             wire_compat=wire_compat,
             input_responses=input_responses,
             request_state=request_state,
+            incoming_bearer_token=incoming_bearer_token,
         )
 
     # Fall back to local tool registry with original name (legacy support)
@@ -2284,6 +2293,7 @@ async def _execute_mcp_tool(
                         oauth2_headers,
                     ),
                 ),
+                incoming_bearer_token=incoming_bearer_token,
             )
             if "arguments" in hook_result:
                 arguments = hook_result["arguments"]  # pyright: ignore[reportAny]  # hook returns untyped args
@@ -2440,6 +2450,20 @@ async def fire_mcp_tool_call_failure_logging(
     )
 
 
+def _single_scoped_server(
+    mcp_servers: Sequence[str] | None, allowed_mcp_servers: Sequence[MCPServer]
+) -> MCPServer | None:
+    """The one server a ``/{server_name}/mcp`` path or ``x-mcp-servers`` header scoped this call to.
+
+    A bare tool name on such a request resolves against that server, the way a REST ``server_id``
+    does, instead of against the per-process tool-name map, which stays empty for a server whose
+    upstream only lists tools with the caller's own credentials until this process has listed it.
+    """
+    if mcp_servers is None or len(mcp_servers) != 1 or len(allowed_mcp_servers) != 1:
+        return None
+    return allowed_mcp_servers[0]
+
+
 @client
 @catalog_operation(lambda: global_mcp_server_manager)
 async def call_mcp_tool(
@@ -2455,6 +2479,7 @@ async def call_mcp_tool(
     wire_compat: WireCompat = WireCompat.LEGACY,
     input_responses: InputResponses | None = None,
     request_state: str | None = None,
+    incoming_bearer_token: SecretStr | None | EllipsisType = ...,
     **kwargs: Any,
 ) -> CallToolResult | InputRequiredResult:
     """
@@ -2500,6 +2525,7 @@ async def call_mcp_tool(
                 detail="User not allowed to call this tool.",
             )
 
+        scoped_server: Final = _single_scoped_server(mcp_servers, allowed_mcp_servers)
         # Delegate to execute_mcp_tool for execution
         response = await execute_mcp_tool(
             name=name,
@@ -2515,6 +2541,8 @@ async def call_mcp_tool(
             wire_compat=wire_compat,
             input_responses=input_responses,
             request_state=request_state,
+            incoming_bearer_token=incoming_bearer_token,
+            requested_server_id=scoped_server.server_id if scoped_server is not None else None,
             **kwargs,
         )
     except Exception as e:
@@ -2709,6 +2737,7 @@ async def _handle_managed_mcp_tool(
     request_state: str | None = None,
     *,
     catalog_auth_header: str | None,
+    incoming_bearer_token: SecretStr | None | EllipsisType = ...,
 ) -> CallToolResult | InputRequiredResult:
     """Handle tool execution for managed server tools. ``catalog_auth_header`` is the header the client
     supplied, which keys the caller's catalog slot; ``mcp_auth_header`` may already be the resolved
@@ -2734,6 +2763,7 @@ async def _handle_managed_mcp_tool(
         wire_compat=wire_compat,
         input_responses=input_responses,
         request_state=request_state,
+        incoming_bearer_token=incoming_bearer_token,
     )
     verbose_logger.debug("CALL TOOL RESULT: %s", call_tool_result)
     return call_tool_result
@@ -2908,6 +2938,7 @@ async def _execute_mcp_server_tool_call(
             oauth2_headers=oauth2_headers,
             raw_headers=raw_headers,
             mcp_proxy_mode=context.mcp_proxy_mode,
+            incoming_bearer_token=context.incoming_bearer_token,
         )
         if virtual_tool_result is not None:
             return virtual_tool_result
@@ -2957,6 +2988,7 @@ async def _execute_mcp_server_tool_call(
             wire_compat=context.wire_compat,
             input_responses=params.input_responses,
             request_state=params.request_state,
+            incoming_bearer_token=context.incoming_bearer_token,
             **data,  # for logging
         )
     except MCPMissingUserEnvVarsError as e:
@@ -3184,6 +3216,7 @@ def prepare_context(
     mcp_proxy_mode: bool = False,
     wire_compat: WireCompat = WireCompat.LEGACY,
     protocol_version: str | None = None,
+    incoming_bearer_token: SecretStr | None | EllipsisType = ...,
 ) -> OperationContext:
     return OperationContext(
         _caller=user_api_key_auth,
@@ -3196,6 +3229,7 @@ def prepare_context(
         mcp_proxy_mode=mcp_proxy_mode,
         wire_compat=wire_compat,
         protocol_version=protocol_version,
+        incoming_bearer_token=incoming_bearer_token,
     )
 
 
@@ -3376,6 +3410,7 @@ class GatewayOperations:
                     wire_compat=context.wire_compat,
                     input_responses=operation.input_responses,
                     request_state=operation.request_state,
+                    incoming_bearer_token=context.incoming_bearer_token,
                     **operation.logging_data,
                 )
             case ListToolsRequest(params=params):
