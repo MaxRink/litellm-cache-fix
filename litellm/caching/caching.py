@@ -640,8 +640,6 @@ class Cache:
                 for value in (
                     self.namespace,
                     authenticated_namespace,
-                    requested_namespace,
-                    metadata_namespace,
                 )
                 if isinstance(value, str) and value
             )
