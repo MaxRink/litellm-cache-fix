@@ -64,6 +64,24 @@ def test_authenticated_cache_keys_preserve_request_and_metadata_namespaces() -> 
     assert key.endswith(":request:metadata:hashed-response")
 
 
+def test_authenticated_cache_keys_preserve_nested_metadata_namespace() -> None:
+    cache: Final = Cache(type=LiteLLMCacheType.LOCAL, namespace="instance")
+    caller: Final = UserAPIKeyAuth(api_key="fixture", token="hashed-key", team_id="team")
+    common: Final = {"user_api_key_auth": caller}
+
+    key_a: Final = cache._add_namespace_to_cache_key(
+        "hashed-response", metadata=common, litellm_params={"metadata": {"redis_namespace": "workload-a"}}
+    )
+    key_b: Final = cache._add_namespace_to_cache_key(
+        "hashed-response", metadata=common, litellm_params={"metadata": {"redis_namespace": "workload-b"}}
+    )
+
+    assert key_a is not None and key_b is not None
+    assert key_a != key_b
+    assert key_a.startswith("instance:caller:")
+    assert key_a.endswith(":workload-a:hashed-response")
+
+
 def test_authenticated_callers_without_server_token_fail_closed_for_all_key_forms() -> None:
     cache: Final = Cache(type=LiteLLMCacheType.LOCAL, namespace="qa")
     caller_a: Final = UserAPIKeyAuth(api_key="raw-a", team_id="team-a", user_id="user-a").model_copy(

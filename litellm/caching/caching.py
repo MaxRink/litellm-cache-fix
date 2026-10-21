@@ -628,9 +628,13 @@ class Cache:
             requested_namespace_value if isinstance(requested_namespace_value, str) else None
         )
         metadata_namespace_value: Final = next(
-            iter(metadata_sources),
-            cast(Mapping[str, object], {}),  # cast-ok: empty mapping is the typed fallback
-        ).get("redis_namespace")
+            (
+                source.get("redis_namespace")
+                for source in metadata_sources
+                if isinstance(source.get("redis_namespace"), str) and source.get("redis_namespace")
+            ),
+            None,
+        )
         metadata_namespace: Final[str | None] = (
             metadata_namespace_value if isinstance(metadata_namespace_value, str) else None
         )
@@ -640,6 +644,8 @@ class Cache:
                 for value in (
                     self.namespace,
                     authenticated_namespace,
+                    requested_namespace,
+                    metadata_namespace,
                 )
                 if isinstance(value, str) and value
             )
