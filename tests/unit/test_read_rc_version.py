@@ -45,5 +45,17 @@ def test_the_repo_pyproject_is_read_when_no_path_is_given(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.chdir(_REPO_ROOT)
-    assert read_rc_version.main(["read_rc_version.py"]) == 0
-    assert capsys.readouterr().out == f"version={read_rc_version.read_version(_REPO_ROOT / 'pyproject.toml')}\n"
+    version: Final = read_rc_version.read_version(_REPO_ROOT / "pyproject.toml")
+    code: Final = read_rc_version.main(["read_rc_version.py"])
+    captured: Final = capsys.readouterr()
+    # The repository tracks a development patch version between releases.  The
+    # no-argument path must still read that file and apply the release gate,
+    # rather than assuming the checkout is always a release commit.
+    if read_rc_version.RELEASE_VERSION.fullmatch(version) is None:
+        assert (code, captured.out, captured.err) == (
+            1,
+            "",
+            f"::error::pyproject.toml version {version} is not an X.Y.0 release version\n",
+        )
+    else:
+        assert (code, captured.out, captured.err) == (0, f"version={version}\n", "")
