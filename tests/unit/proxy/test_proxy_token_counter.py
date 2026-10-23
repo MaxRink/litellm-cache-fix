@@ -1427,13 +1427,6 @@ async def test_framing_keeps_the_400_for_blocks_the_provider_counter_cannot_conv
         pytest.param(
             {
                 "messages": [{"role": "user", "content": "What is new?"}],
-                "tools": [{"name": "search", "input_schema": {"type": "object", "properties": {"query": True}}}],
-            },
-            id="boolean_subschema_tool",
-        ),
-        pytest.param(
-            {
-                "messages": [{"role": "user", "content": "What is new?"}],
                 "tools": [
                     {"name": "search", "input_schema": {"type": "object", "properties": {"tags": {"type": "array"}}}}
                 ],
@@ -1464,6 +1457,33 @@ async def test_framed_estimate_that_cannot_read_the_body_answers_the_provider_er
 
     assert (raised.value.code, raised.value.message) == ("400", "scripted 400 for kimi")
     assert readable.count_source == "local_estimate"
+
+
+@pytest.mark.asyncio
+async def test_framed_estimate_accepts_boolean_json_schema_subschemas(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A boolean JSON Schema subschema is valid and must remain locally countable."""
+    counter: Final = _ScriptedCounter({"us.moonshotai.kimi-k3": _provider_reply("kimi", status_code=400)})
+    monkeypatch.setattr(
+        litellm.proxy.proxy_server,
+        "llm_router",
+        Router(model_list=[{"model_name": "kimi", "litellm_params": {"model": "bedrock/us.moonshotai.kimi-k3"}}]),
+    )
+    monkeypatch.setattr(
+        litellm.proxy.proxy_server, "_get_provider_token_counter", lambda deployment, model: (counter, model, "bedrock")
+    )
+
+    result = await token_counter(
+        request=TokenCountRequest(
+            model="kimi",
+            messages=[{"role": "user", "content": "What is new?"}],
+            tools=[{"name": "search", "input_schema": {"type": "object", "properties": {"query": True}}}],
+        ),
+        call_endpoint=True,
+    )
+
+    assert result.count_source == "local_estimate"
 
 
 @pytest.mark.asyncio
