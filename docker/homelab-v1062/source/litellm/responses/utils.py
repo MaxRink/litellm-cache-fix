@@ -316,7 +316,7 @@ class ResponsesAPIRequestUtils:
         responses_api_response: ResponsesAPIResponse,
         custom_llm_provider: str | None,
         litellm_metadata: dict[str, object] | None = None,
-    ) -> ResponsesAPIResponse: 
+    ) -> ResponsesAPIResponse:
         ...
 
     @overload
