@@ -570,8 +570,6 @@ async def test_ProxyConfig_load_config_router_refuses_a_db_heuristic_v2_router_b
 ) -> None:
     """config.yaml holds the one allowed heuristic_v2 router; a second one arriving later from the DB
     is refused at registration because the router was built with the license's ceiling."""
-    from litellm.types.router import Deployment
-
     f = tmp_path / "c.yaml"
     f.write_text(
         _TWO_HEURISTIC_V2_ROUTERS_YAML.replace("  - model_name: v2-b\n", "  - model_name: v1-b\n", 1).replace(
