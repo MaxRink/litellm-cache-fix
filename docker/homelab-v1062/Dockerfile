@@ -12,6 +12,7 @@ COPY source/litellm/completion_extras/litellm_responses_transformation/transform
 COPY source/litellm/responses/ /app/.venv/lib/python3.13/site-packages/litellm/responses/
 COPY source/litellm/experimental_mcp_client/tools.py /app/.venv/lib/python3.13/site-packages/litellm/experimental_mcp_client/tools.py
 COPY source/litellm/integrations/prometheus.py /app/.venv/lib/python3.13/site-packages/litellm/integrations/prometheus.py
+COPY source/litellm/integrations/opentelemetry.py /app/.venv/lib/python3.13/site-packages/litellm/integrations/opentelemetry.py
 COPY source/litellm/proxy/proxy_server.py /app/.venv/lib/python3.13/site-packages/litellm/proxy/proxy_server.py
 COPY litellm-v1062-forwardport.py /tmp/litellm-v1062-forwardport.py
 # Keep the runtime aligned with the fork's security-validated lockfile.  The

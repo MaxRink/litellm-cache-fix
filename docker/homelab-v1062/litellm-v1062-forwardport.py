@@ -4,6 +4,7 @@ from pathlib import Path
 
 CACHE_BASE = "a8d6b09d6cded7d1b06e8e2d01ee9859a62eba6f2c9894e5d58bbe376210637e"
 OTEL_BASE = "c7631f38a2b33ae7983660a4ec3db56cc01039678f53a24bc0870ed1aa6a6641"
+OTEL_PATCHED = "28529f5fa51c434c779a583d0dda21b4f5a576773951f058e86d19971f8ed68b"
 
 def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -65,8 +66,14 @@ def patch_cache(path: Path) -> None:
     print(f"cache_forwardport_sha={sha(path)}")
 
 def patch_otel(path: Path) -> None:
-    if sha(path) != OTEL_BASE:
-        raise SystemExit(f"unexpected v1.106.2 OTEL source: {sha(path)}")
+    current_sha = sha(path)
+    # The fork source may already contain the guarded ended-span fix.  Accept
+    # that exact reviewed source rather than trying to apply the patch twice.
+    if current_sha == OTEL_PATCHED:
+        print(f"otel_forwardport_sha={current_sha}")
+        return
+    if current_sha != OTEL_BASE:
+        raise SystemExit(f"unexpected v1.106.2 OTEL source: {current_sha}")
     text = path.read_text()
     old = "            span.set_attributes(routing_decision_attributes(decision))\n"
     new = "            for key, value in routing_decision_attributes(decision).items():\n                self.safe_set_attribute(span=span, key=key, value=value)\n"
