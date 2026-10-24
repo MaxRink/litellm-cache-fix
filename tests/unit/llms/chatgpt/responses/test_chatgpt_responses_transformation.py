@@ -13,7 +13,12 @@ import httpx
 import pytest
 
 import litellm
+from litellm.llms.chatgpt.common_utils import (
+    bounded_chatgpt_prompt_cache_key,
+    chatgpt_session_id_from_prompt_cache_key,
+)
 from litellm.llms.chatgpt.responses.transformation import ChatGPTResponsesAPIConfig
+from litellm.llms.custom_httpx.http_handler import HTTPHandler
 from litellm.llms.openai.common_utils import OpenAIError
 from litellm.main import responses_api_bridge_check
 from litellm.types.router import GenericLiteLLMParams
@@ -394,3 +399,134 @@ class TestChatGPTResponsesAPITransformation:
 
         assert "ChatGPT upstream failed" in str(exc_info.value)
         assert exc_info.value.status_code == 502
+
+
+def _transform(optional: dict, litellm_params: GenericLiteLLMParams | None = None) -> tuple[dict, dict]:
+    headers: Final = {"session_id": "per-call-fallback"}
+    request: Final = ChatGPTResponsesAPIConfig().transform_responses_api_request(
+        model="chatgpt/gpt-6.1-sol",
+        input="hi",
+        response_api_optional_request_params=optional,
+        litellm_params=litellm_params or GenericLiteLLMParams(litellm_call_id="call-1"),
+        headers=headers,
+    )
+    return request, headers
+
+
+def test_prompt_cache_key_is_forwarded_and_pins_session_header() -> None:
+    request, headers = _transform({"prompt_cache_key": "hermes-session-1", "store": True})
+
+    assert request["prompt_cache_key"] == "hermes-session-1"
+    assert request["store"] is False
+    assert headers["session_id"] == chatgpt_session_id_from_prompt_cache_key("hermes-session-1")
+
+
+def test_session_header_is_stable_per_key_and_distinct_across_keys() -> None:
+    _, first = _transform({"prompt_cache_key": "k1"}, GenericLiteLLMParams(litellm_call_id="a"))
+    _, second = _transform({"prompt_cache_key": "k1"}, GenericLiteLLMParams(litellm_call_id="b"))
+    _, other = _transform({"prompt_cache_key": "k2"}, GenericLiteLLMParams(litellm_call_id="a"))
+
+    assert first["session_id"] == second["session_id"]
+    assert first["session_id"] != other["session_id"]
+
+
+def test_without_prompt_cache_key_request_and_fallback_session_are_unchanged() -> None:
+    request, headers = _transform({})
+
+    assert "prompt_cache_key" not in request
+    assert headers["session_id"] == "per-call-fallback"
+
+
+@pytest.mark.parametrize(
+    "litellm_params",
+    [
+        GenericLiteLLMParams(litellm_session_id="explicit"),
+        GenericLiteLLMParams(metadata={"session_id": "explicit"}),
+    ],
+)
+def test_explicit_litellm_session_id_wins(litellm_params: GenericLiteLLMParams) -> None:
+    request, headers = _transform({"prompt_cache_key": "k1"}, litellm_params)
+
+    assert request["prompt_cache_key"] == "k1"
+    assert headers["session_id"] == "per-call-fallback"
+
+
+def test_caller_session_header_wins() -> None:
+    _, headers = _transform({"prompt_cache_key": "k1", "extra_headers": {"Session_Id": "caller"}})
+
+    assert headers["session_id"] == "per-call-fallback"
+
+
+@pytest.mark.parametrize("value", [None, "", "   ", 123, {"k": "v"}])
+def test_invalid_prompt_cache_key_is_dropped(value: object) -> None:
+    request, headers = _transform({"prompt_cache_key": value})
+
+    assert "prompt_cache_key" not in request
+    assert headers["session_id"] == "per-call-fallback"
+
+
+def test_long_prompt_cache_key_is_bounded_and_stable() -> None:
+    long_key: Final = "x" * 500
+    bounded: Final = bounded_chatgpt_prompt_cache_key(long_key)
+
+    assert bounded is not None
+    assert len(bounded) == 64
+    assert bounded == bounded_chatgpt_prompt_cache_key(long_key)
+    assert bounded != bounded_chatgpt_prompt_cache_key("y" * 500)
+    assert bounded_chatgpt_prompt_cache_key("k" * 64) == "k" * 64
+
+
+@patch.multiple(
+    "litellm.llms.chatgpt.authenticator.Authenticator",
+    get_access_token=MagicMock(return_value="access-123"),
+    get_account_id=MagicMock(return_value="acct-123"),
+    get_api_base=MagicMock(return_value=None),
+)
+def test_responses_wire_request_carries_key_and_stable_session() -> None:
+    completed: Final = {
+        "type": "response.completed",
+        "response": {
+            "id": "resp_1",
+            "object": "response",
+            "created_at": 1700000000,
+            "status": "completed",
+            "model": "gpt-6.1-sol",
+            "output": [
+                {
+                    "type": "message",
+                    "id": "msg_1",
+                    "status": "completed",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "OK", "annotations": []}],
+                }
+            ],
+            "usage": {"input_tokens": 10, "output_tokens": 1, "total_tokens": 11},
+        },
+    }
+    sent: Final[list[tuple[dict, dict]]] = []
+
+    def fake_post(*_args: object, **kwargs: object) -> httpx.Response:
+        sent.append((dict(kwargs["headers"]), dict(kwargs["json"])))
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=f"data: {json.dumps(completed)}\n\n".encode(),
+            request=httpx.Request("POST", "https://chatgpt.example.com/responses"),
+        )
+
+    client: Final = HTTPHandler()
+    with patch.object(client, "post", side_effect=fake_post):
+        for _ in range(2):
+            litellm.responses(
+                model="chatgpt/gpt-6.1-sol",
+                input="hi",
+                prompt_cache_key="hermes-session-1",
+                client=client,
+            )
+
+    assert len(sent) == 2
+    expected_session: Final = chatgpt_session_id_from_prompt_cache_key("hermes-session-1")
+    for headers, body in sent:
+        assert body["prompt_cache_key"] == "hermes-session-1"
+        assert body["store"] is False
+        assert headers["session_id"] == expected_session

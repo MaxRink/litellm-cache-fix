@@ -2,10 +2,11 @@
 Constants and helpers for ChatGPT subscription OAuth.
 """
 
+import hashlib
 import os
 import platform
 from typing import Any, Final
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 import httpx
 
@@ -268,7 +269,7 @@ def _normalize_litellm_params(litellm_params: Any | None) -> dict:
     return {}
 
 
-def get_chatgpt_session_id(litellm_params: object) -> str | None:
+def get_explicit_chatgpt_session_id(litellm_params: object) -> str | None:
     params: Final = _normalize_litellm_params(litellm_params)
     for key in ("litellm_session_id", "session_id"):
         value = params.get(key)
@@ -279,6 +280,14 @@ def get_chatgpt_session_id(litellm_params: object) -> str | None:
         value = metadata.get("session_id")
         if value:
             return str(value)
+    return None
+
+
+def get_chatgpt_session_id(litellm_params: object) -> str | None:
+    explicit: Final = get_explicit_chatgpt_session_id(litellm_params)
+    if explicit:
+        return explicit
+    params: Final = _normalize_litellm_params(litellm_params)
     for key in ("litellm_trace_id", "litellm_call_id"):
         value = params.get(key)
         if value:
@@ -288,3 +297,24 @@ def get_chatgpt_session_id(litellm_params: object) -> str | None:
 
 def ensure_chatgpt_session_id(litellm_params: object) -> str:
     return get_chatgpt_session_id(litellm_params) or str(uuid4())
+
+
+# OpenAI rejects longer prompt_cache_key values; keep the outbound key bounded.
+CHATGPT_PROMPT_CACHE_KEY_MAX_LENGTH: Final = 64
+
+
+def bounded_chatgpt_prompt_cache_key(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    key: Final = value.strip()
+    if not key:
+        return None
+    if len(key) <= CHATGPT_PROMPT_CACHE_KEY_MAX_LENGTH:
+        return key
+    prefix: Final = "sha256-"
+    digest: Final = hashlib.sha256(key.encode("utf-8")).hexdigest()
+    return prefix + digest[: CHATGPT_PROMPT_CACHE_KEY_MAX_LENGTH - len(prefix)]
+
+
+def chatgpt_session_id_from_prompt_cache_key(prompt_cache_key: str) -> str:
+    return str(uuid5(NAMESPACE_URL, f"litellm:chatgpt:prompt_cache_key:{prompt_cache_key}"))
