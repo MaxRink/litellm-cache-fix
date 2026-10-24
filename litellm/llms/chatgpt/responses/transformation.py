@@ -28,9 +28,12 @@ from ..authenticator import Authenticator
 from ..common_utils import (
     CHATGPT_API_BASE,
     GetAccessTokenError,
+    bounded_chatgpt_prompt_cache_key,
+    chatgpt_session_id_from_prompt_cache_key,
     ensure_chatgpt_session_id,
     get_chatgpt_default_headers,
     get_chatgpt_default_instructions,
+    get_explicit_chatgpt_session_id,
 )
 
 if TYPE_CHECKING:
@@ -115,6 +118,14 @@ class ChatGPTResponsesAPIConfig(OpenAIResponsesAPIConfig):
         service_tier: Final = _CHATGPT_SERVICE_TIERS.get(request.get("service_tier"))
         if service_tier is not None:
             filtered["service_tier"] = service_tier
+        prompt_cache_key: Final = bounded_chatgpt_prompt_cache_key(request.get("prompt_cache_key"))
+        if prompt_cache_key is not None:
+            filtered["prompt_cache_key"] = prompt_cache_key
+            # validate_environment cannot see the body, so it only had a per-call fallback session id.
+            caller_headers: Final = response_api_optional_request_params.get("extra_headers") or {}
+            caller_set_session: Final = any(str(name).lower() == "session_id" for name in caller_headers)
+            if not caller_set_session and get_explicit_chatgpt_session_id(litellm_params) is None:
+                headers["session_id"] = chatgpt_session_id_from_prompt_cache_key(prompt_cache_key)
         return filtered
 
     def transform_response_api_response(
