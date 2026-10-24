@@ -10,11 +10,12 @@ updates:
       github-actions:
         patterns:
           - "*"
+    open-pull-requests-limit: 0
   - package-ecosystem: cargo
     directory: /litellm-rust
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       routine-updates:
         patterns:
@@ -26,7 +27,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       routine-updates:
         patterns:
@@ -51,7 +52,7 @@ updates:
     - /ui
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       routine-updates:
         patterns:
@@ -66,7 +67,7 @@ updates:
     - /docker
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       routine-updates:
         patterns:
@@ -84,7 +85,7 @@ updates:
     - /.github/actions/setup-uv-with-retries
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       routine-updates:
         patterns:
@@ -98,7 +99,7 @@ updates:
     - /terraform/provider
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       routine-updates:
         patterns:
@@ -112,7 +113,7 @@ updates:
     - /helm/litellm-helm
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       routine-updates:
         patterns:
@@ -130,7 +131,7 @@ updates:
     - /vscode-extension
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       routine-updates:
         patterns:
@@ -150,7 +151,7 @@ updates:
     - /tests/llm_translation/test_skills_data/slack-gif-creator
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       routine-updates:
         patterns:
@@ -162,7 +163,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       routine-updates:
         patterns:
@@ -176,7 +177,7 @@ updates:
     - /terraform/litellm/gcp
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       routine-updates:
         patterns:
@@ -188,7 +189,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       routine-updates:
         patterns:
