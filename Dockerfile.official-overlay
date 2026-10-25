@@ -1,0 +1,13 @@
+FROM ghcr.io/berriai/litellm@sha256:5fe727f753adce1ef454ad6371e267d5db3c3d99d4d1ee847ca1f4c0208001d5
+
+ARG LITELLM_RELEASE_TAG=v1.106.1
+ENV LITELLM_RELEASE_TAG=${LITELLM_RELEASE_TAG}
+
+# The fork has no Rust source changes; retain the official amd64 maturin
+# extension and overlay the complete fork Python package instead of rebuilding
+# it under arm64/QEMU.
+COPY litellm/ /tmp/fork-litellm/
+RUN find /tmp/fork-litellm -type f \( -name '*.so' -o -name '*.pyd' \) -delete && \
+    cp -a /tmp/fork-litellm/. /app/.venv/lib/python3.13/site-packages/litellm/ && \
+    rm -rf /tmp/fork-litellm
+

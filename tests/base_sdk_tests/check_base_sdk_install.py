@@ -180,6 +180,21 @@ CHECKS: tuple[tuple[str, Callable[[], str]], ...] = (
 )
 
 
+def checks_for_profile(profile: str) -> tuple[tuple[str, Callable[[], str]], ...]:
+    """Return checks valid for the dependency profile being exercised.
+
+    The dependency profile intentionally installs optional tokenizer and HTTP
+    packages after the base-only profile has completed. Re-running the
+    base-only assertion there would make the check fail because of the test's
+    own dependency setup, rather than because the wheel declares a dependency
+    incorrectly.
+    """
+    if profile == "dependencies":
+        excluded = {"environment is base-only", "optional MCP installation guidance"}
+        return tuple((label, check) for label, check in CHECKS if label not in excluded)
+    return CHECKS
+
+
 def _run(check: Callable[[], str]) -> tuple[bool, str]:
     try:
         return True, check()
@@ -196,7 +211,8 @@ def main() -> int:
         _require(present == (profile != "core"), f"{profile}: unexpected presence of {module}: {present}")
     _require(importlib.util.find_spec("jsonschema") is not None, "jsonschema must remain mandatory")
     print(f"{profile} SDK smoke check on {sys.executable}")
-    for label, check in CHECKS:
+    checks = checks_for_profile(profile)
+    for label, check in checks:
         passed, detail = _run(check)
         if not passed:
             print(f"FAIL  {label}:\n{detail}")
@@ -206,7 +222,7 @@ def main() -> int:
             return 1
         print(f"PASS  {label}: {detail}")
 
-    print(f"\nall {len(CHECKS)} checks passed")
+    print(f"\nall {len(checks)} checks passed")
     return 0
 
 

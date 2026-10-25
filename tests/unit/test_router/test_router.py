@@ -89,6 +89,7 @@ from litellm.llms.base_llm.vector_store.transformation import(
 from litellm.types.utils import CallTypes, CredentialItem
 from litellm.utils import _invalidate_model_cost_lowercase_map
 from tests._vcr_conftest_common import install_live_call_probe, record_vcr_outcome
+from tests.fake_openai_endpoint import FAKE_OPENAI_API_BASE
 from tests.large_text import text
 import traceback
 import inspect
@@ -6260,6 +6261,59 @@ def test_pre_call_checks_counts_tokens_from_responses_input_list(monkeypatch):
                 {"role": "user", "content": "count these tokens against the one token limit please"},
             ],
         )
+
+
+def test_pre_call_checks_counts_embedding_input_strings(monkeypatch):
+    """Embedding input lists use the real tokenizer and do not hit Responses parsing."""
+    router = litellm.Router(
+        model_list=[
+            {"model_name": "m", "litellm_params": {"model": "gemini-embedding-001"}},
+        ],
+        enable_pre_call_checks=True,
+    )
+    monkeypatch.setattr(
+        router, "get_router_model_info", lambda **kwargs: {"max_input_tokens": 1}
+    )
+
+    deployments = [
+        {"litellm_params": {"model": "gemini-embedding-001"}, "model_info": {"id": "d1"}},
+    ]
+    with pytest.raises(litellm.ContextWindowExceededError):
+        router._pre_call_checks(
+            model="m",
+            healthy_deployments=deployments,
+            input=["count these embedding tokens against the one token limit"],
+        )
+
+
+def test_pre_call_checks_counts_embedding_batch_per_item(monkeypatch):
+    """Embedding batches count the largest item, not their concatenated text."""
+    router = litellm.Router(
+        model_list=[
+            {"model_name": "m", "litellm_params": {"model": "gemini-embedding-001"}},
+        ],
+        enable_pre_call_checks=True,
+    )
+    monkeypatch.setattr(router, "get_router_model_info", lambda **kwargs: {"max_input_tokens": 6})
+    monkeypatch.setattr(litellm, "token_counter", lambda *, text=None, **kwargs: len(text or ""))
+    deployments = [
+        {"litellm_params": {"model": "gemini-embedding-001"}, "model_info": {"id": "d1"}},
+    ]
+    assert router._pre_call_checks(
+        model="m", healthy_deployments=deployments, input=["first", "second"]
+    ) == deployments
+
+
+def test_pre_call_checks_counts_tokenized_embedding_batches():
+    """Tokenized embedding batches bypass Responses item normalization."""
+    router = litellm.Router(
+        model_list=[
+            {"model_name": "m", "litellm_params": {"model": "gemini-embedding-001"}},
+        ],
+        enable_pre_call_checks=True,
+    )
+    assert router._count_pre_call_check_tokens(messages=None, input=[1, 2, 3]) == 3
+    assert router._count_pre_call_check_tokens(messages=None, input=[[1, 2], [3, 4, 5]]) == 3
 
 
 def test_pre_call_checks_counts_responses_instructions_tokens(monkeypatch):
@@ -25105,3 +25159,81 @@ async def test_responses_fallback_wrapper_disconnect_billing_keeps_the_primary_s
     wrapped.adopt_fallback_headers(fallback)
 
     assert wrapped.partial_response_on_disconnect().response.usage.output_tokens == primary_tokens + fallback_tokens
+def _create_custom_routing_router():
+    return Router(
+        model_list=[
+            {
+                "model_name": "azure-model",
+                "litellm_params": {
+                    "model": "openai/very-special-endpoint",
+                    "api_base": FAKE_OPENAI_API_BASE,
+                    "api_key": "fake-key",
+                },
+                "model_info": {"id": "very-special-endpoint"},
+            },
+            {
+                "model_name": "azure-model",
+                "litellm_params": {
+                    "model": "openai/fast-endpoint",
+                    "api_base": FAKE_OPENAI_API_BASE,
+                    "api_key": "fake-key",
+                },
+                "model_info": {"id": "fast-endpoint"},
+            },
+        ],
+        set_verbose=True,
+        debug_level="DEBUG",
+    )
+
+
+class SpecialEndpointRoutingStrategy(CustomRoutingStrategyBase):
+    def __init__(self, router_instance: Router):
+        self._router = router_instance
+
+    async def async_get_available_deployment(
+        self,
+        model: str,
+        messages: list[dict[str, str]] | None = None,
+        input: str | list | None = None,
+        specific_deployment: bool | None = False,
+        request_kwargs: dict | None = None,
+    ):
+        print("In CUSTOM async get available deployment")
+        model_list = self._router.model_list
+        print("router model list=", model_list)
+        for model in model_list:
+            if isinstance(model, dict):
+                if model["litellm_params"]["model"] == "openai/very-special-endpoint":
+                    return model
+        pass
+
+    def get_available_deployment(
+        self,
+        model: str,
+        messages: list[dict[str, str]] | None = None,
+        input: str | list | None = None,
+        specific_deployment: bool | None = False,
+        request_kwargs: dict | None = None,
+    ):
+        pass
+
+
+def test_reset_custom_routing_strategy():
+    """
+    Setting a custom routing strategy installs instance-level overrides for
+    get_available_deployment / async_get_available_deployment. Re-initializing the
+    routing strategy must clear them so the class implementations are used again.
+    """
+    router = _create_custom_routing_router()
+    router.set_custom_routing_strategy(SpecialEndpointRoutingStrategy(router))
+
+    assert "get_available_deployment" in router.__dict__
+    assert "async_get_available_deployment" in router.__dict__
+
+    router._reset_custom_routing_strategy()
+
+    assert "get_available_deployment" not in router.__dict__
+    assert "async_get_available_deployment" not in router.__dict__
+    assert router.async_get_available_deployment.__func__ is Router.async_get_available_deployment
+
+    router._reset_custom_routing_strategy()

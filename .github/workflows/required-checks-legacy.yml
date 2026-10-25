@@ -2,6 +2,7 @@ name: Required checks (legacy)
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - main
       - "litellm_**"
@@ -15,6 +16,10 @@ concurrency:
 
 jobs:
   lint:
+    if: >-
+      github.event_name != 'pull_request' ||
+      !github.event.pull_request.draft ||
+      github.repository == 'BerriAI/litellm'
     name: lint
     permissions:
       contents: read
@@ -88,7 +93,7 @@ jobs:
       - name: Install dependencies
         if: steps.changes.outputs.decision != 'skip'
         run: |
-          uv sync --frozen --group proxy-dev --group e2e-dev
+          uv sync --frozen --group proxy-dev --group e2e-dev --reinstall-package prisma
 
       - name: Cache Prisma binaries
         if: steps.changes.outputs.decision != 'skip'
@@ -204,6 +209,10 @@ jobs:
           uv run --no-sync python -c "from litellm import *" || (echo '🚨 import failed, this means you introduced unprotected imports! 🚨'; exit 1)
 
   frontend-lint:
+    if: >-
+      github.event_name != 'pull_request' ||
+      !github.event.pull_request.draft ||
+      github.repository == 'BerriAI/litellm'
     name: frontend-lint
     permissions:
       contents: read
@@ -292,6 +301,10 @@ jobs:
         run: npm run knip:ci
 
   assert-ci-coverage:
+    if: >-
+      github.event_name != 'pull_request' ||
+      !github.event.pull_request.draft ||
+      github.repository == 'BerriAI/litellm'
     name: assert-ci-coverage
     permissions:
       contents: read
@@ -319,6 +332,10 @@ jobs:
         run: python .github/scripts/assert_workflow_dir_hygiene.py
 
   dashboard-build:
+    if: >-
+      github.event_name != 'pull_request' ||
+      !github.event.pull_request.draft ||
+      github.repository == 'BerriAI/litellm'
     name: Dashboard build
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -332,6 +349,10 @@ jobs:
         run: docker build --target ui-builder -f Dockerfile .
 
   core-checks:
+    if: >-
+      github.event_name != 'pull_request' ||
+      !github.event.pull_request.draft ||
+      github.repository == 'BerriAI/litellm'
     name: Core checks (Python ${{ matrix.python-version }})
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -358,7 +379,7 @@ jobs:
           version: "0.10.9"
 
       - name: Install dependencies
-        run: .github/scripts/uv_sync_with_retries.sh --frozen --extra proxy --extra cli --group dev --group proxy-dev --python ${{ matrix.python-version }}
+        run: .github/scripts/uv_sync_with_retries.sh --frozen --extra proxy --extra cli --group dev --group proxy-dev --python ${{ matrix.python-version }} --reinstall-package prisma
 
       - name: Create the loopback-only network namespace
         run: |
