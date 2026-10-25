@@ -6,8 +6,194 @@ updates:
       interval: "daily"
     cooldown:
       default-days: 7
-      semver-major-days: 14
     groups:
       github-actions:
         patterns:
           - "*"
+    open-pull-requests-limit: 0
+  - package-ecosystem: cargo
+    directory: /litellm-rust
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      routine-updates:
+        patterns:
+        - '*'
+        update-types:
+        - minor
+        - patch
+  - package-ecosystem: devcontainers
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      routine-updates:
+        patterns:
+        - '*'
+        update-types:
+        - minor
+        - patch
+  - package-ecosystem: docker
+    directories:
+    - /
+    - /backend
+    - /cookbook/litellm-ollama-docker-image
+    - /deploy/lens
+    - /docker
+    - /docker/build_from_pip
+    - /gateway
+    - /litellm-rust/crates/gateway
+    - /migrations
+    - /ops/otel-guard
+    - /tests/e2e/claude_code/cron_vm
+    - /tests/unit
+    - /ui
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      routine-updates:
+        patterns:
+        - '*'
+        update-types:
+        - minor
+        - patch
+  - package-ecosystem: docker-compose
+    directories:
+    - /
+    - /deploy/lens
+    - /docker
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      routine-updates:
+        patterns:
+        - '*'
+        update-types:
+        - minor
+        - patch
+  - package-ecosystem: github-actions
+    directories:
+    - /.github/actions/cache-cargo-build
+    - /.github/actions/cache-prisma-binaries
+    - /.github/actions/cache-uv-downloads
+    - /.github/actions/detect-changes
+    - /.github/actions/rust-bridge
+    - /.github/actions/setup-uv-with-retries
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      routine-updates:
+        patterns:
+        - '*'
+        update-types:
+        - minor
+        - patch
+  - package-ecosystem: gomod
+    directories:
+    - /cookbook/gollem_go_agent_framework
+    - /terraform/provider
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      routine-updates:
+        patterns:
+        - '*'
+        update-types:
+        - minor
+        - patch
+  - package-ecosystem: helm
+    directories:
+    - /helm/litellm
+    - /helm/litellm-helm
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      routine-updates:
+        patterns:
+        - '*'
+        update-types:
+        - minor
+        - patch
+  - package-ecosystem: npm
+    directories:
+    - /
+    - /tests/e2e/ui
+    - /tests/pass_through_tests
+    - /tests/proxy_admin_ui_tests/ui_unit_tests
+    - /ui/litellm-dashboard
+    - /vscode-extension
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      routine-updates:
+        patterns:
+        - '*'
+        update-types:
+        - minor
+        - patch
+  - package-ecosystem: pip
+    directories:
+    - /cookbook/anthropic_agent_sdk
+    - /cookbook/litellm-ollama-docker-image
+    - /cookbook/livekit_agent_sdk
+    - /enterprise
+    - /litellm-proxy-extras
+    - /packaging/litellm-core
+    - /scripts/health_check
+    - /tests/llm_translation/test_skills_data/slack-gif-creator
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      routine-updates:
+        patterns:
+        - '*'
+        update-types:
+        - minor
+        - patch
+  - package-ecosystem: rust-toolchain
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      routine-updates:
+        patterns:
+        - '*'
+        update-types:
+        - minor
+        - patch
+  - package-ecosystem: terraform
+    directories:
+    - /terraform/litellm/aws
+    - /terraform/litellm/gcp
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      routine-updates:
+        patterns:
+        - '*'
+        update-types:
+        - minor
+        - patch
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      routine-updates:
+        patterns:
+        - '*'
+        update-types:
+        - minor
+        - patch

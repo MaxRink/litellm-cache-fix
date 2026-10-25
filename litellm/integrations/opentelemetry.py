@@ -2415,7 +2415,8 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
             for key, value in metadata.items():
                 self.safe_set_attribute(span=span, key=f"metadata.{key}", value=value)
             decision: Final = metadata.get("routing_decision")
-            span.set_attributes(routing_decision_attributes(decision))
+            for key, value in routing_decision_attributes(decision).items():
+                self.safe_set_attribute(span=span, key=key, value=value)
 
             # get hidden params
             hidden_params: Final = getattr(standard_logging_payload, "hidden_params", None) or (
@@ -2764,6 +2765,9 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
         """
         Safely sets an attribute on the span, ensuring the value is a primitive type.
         """
+        is_recording: Final = getattr(span, "is_recording", None)
+        if callable(is_recording) and not is_recording():
+            return
         primitive_value: Final = self._cast_as_primitive_value_type(value)
         span.set_attribute(key, primitive_value)
 

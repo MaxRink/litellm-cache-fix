@@ -25,6 +25,7 @@ jobs:
       pull-requests: read
     outputs:
       artifact: ${{ steps.rust-bridge-artifact.outputs.name }}
+      decision: ${{ steps.changes.outputs.decision }}
     runs-on: ubuntu-latest
     env:
       UV_PYTHON: "3.12"
@@ -122,7 +123,7 @@ jobs:
   unit:
     name: ${{ matrix.shard }}
     needs: [rust-bridge, assert-shard-coverage]
-    if: ${{ !cancelled() }}
+    if: ${{ needs.rust-bridge.outputs.decision == 'run' && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.job-timeout-minutes }}
     permissions:
@@ -137,6 +138,7 @@ jobs:
         include:
           - shard: core-utils
             test-path: |-
+              tests/unit/batch_completion
               tests/unit/decisions
               tests/unit/litellm_core_utils
               tests/unit/systemone
@@ -977,11 +979,14 @@ jobs:
         run: |
           diff -u model_prices_and_context_window.json litellm/model_prices_and_context_window_backup.json
           if [ -z "$RUST_BRIDGE_ARTIFACT" ]; then
-            .github/scripts/uv_sync_with_retries.sh --frozen --group ci --group proxy-dev --extra google --extra proxy --extra semantic-router --extra saml --extra caching --extra extra_proxy --extra proxy-runtime --extra utils
+            .github/scripts/uv_sync_with_retries.sh --frozen --group ci --group proxy-dev --extra google --extra proxy --extra semantic-router --extra saml --extra caching --extra extra_proxy --extra proxy-runtime --extra utils --reinstall-package prisma
           else
             .github/scripts/uv_sync_with_retries.sh --frozen --group ci --group proxy-dev --extra google --extra proxy --extra semantic-router --extra saml --extra caching --extra extra_proxy --extra proxy-runtime --extra utils --no-install-project
             uv pip install --no-deps --python .venv/bin/python rust-bridge-dist/*.whl
             cp rust-bridge-dist/litellm/rust_bridge/_native.abi3.so litellm/rust_bridge/_native.abi3.so
+            # The bridge wheel carries distribution metadata and the native extension,
+            # while isolated subprocess tests still need the Python source on sys.path.
+            .venv/bin/python -c 'import os; import site; from pathlib import Path; Path(site.getsitepackages()[0], "litellm-source.pth").write_text(os.environ["GITHUB_WORKSPACE"] + "\n")'
             uv run --no-sync python -c "import importlib.metadata; import litellm.rust_bridge._native; print(importlib.metadata.version('litellm'))"
           fi
           uv run --no-sync python -c 'import os, sys; print(sys.version); assert f"{sys.version_info.major}.{sys.version_info.minor}" == os.environ["UV_PYTHON"]'
@@ -1121,6 +1126,7 @@ jobs:
         env:
           CI: "true"
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -1132,7 +1138,7 @@ jobs:
             exit 0
           fi
 
-          merge_base=$(gh api "repos/${{ github.repository }}/compare/${BASE_SHA}...${HEAD_SHA}?per_page=1" --jq '.merge_base_commit.sha')
+          merge_base=$(gh api "repos/${REPOSITORY}/compare/${BASE_SHA}...${HEAD_SHA}?per_page=1" --jq '.merge_base_commit.sha')
           test -n "$merge_base"
           git fetch --no-tags --depth=1 origin "$merge_base" "$HEAD_SHA"
           changed_files=()
@@ -1219,7 +1225,7 @@ jobs:
       - name: Install dependencies
         if: steps.changes.outputs.decision != 'skip'
         run: |
-          .github/scripts/uv_sync_with_retries.sh --frozen --group ci --group proxy-dev --extra google --extra proxy --extra semantic-router
+          .github/scripts/uv_sync_with_retries.sh --frozen --group ci --group proxy-dev --extra google --extra proxy --extra semantic-router --reinstall-package prisma
 
       - name: Cache Prisma binaries
         if: steps.changes.outputs.decision != 'skip'
