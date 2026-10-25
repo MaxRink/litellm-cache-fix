@@ -11,7 +11,7 @@ def sha(path: Path) -> str:
 
 def patch_cache(path: Path) -> None:
     if sha(path) != CACHE_BASE:
-        raise SystemExit(f"unexpected v1.106.2 cache source: {sha(path)}")
+        raise SystemExit(f"unexpected v1.106.4 cache source: {sha(path)}")
     text = path.read_text()
     old_loop = "        for param in kwargs:\n            if param in scope_excluded_params:\n"
     new_loop = "        for param in kwargs:\n            if param == \"parent_otel_span\":\n                continue\n            if param in scope_excluded_params:\n"
@@ -73,7 +73,7 @@ def patch_otel(path: Path) -> None:
         print(f"otel_forwardport_sha={current_sha}")
         return
     if current_sha != OTEL_BASE:
-        raise SystemExit(f"unexpected v1.106.2 OTEL source: {current_sha}")
+        raise SystemExit(f"unexpected v1.106.4 OTEL source: {current_sha}")
     text = path.read_text()
     old = "            span.set_attributes(routing_decision_attributes(decision))\n"
     new = "            for key, value in routing_decision_attributes(decision).items():\n                self.safe_set_attribute(span=span, key=key, value=value)\n"
